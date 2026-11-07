@@ -81,6 +81,24 @@
     </div>
   </aside>
 
+  <div class="sheet-backdrop" id="genreSheet" hidden>
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="genreSheetTitle">
+      <div class="drawer-head">
+        <h2 id="genreSheetTitle">GENRES</h2>
+        <button class="btn-icon" id="closeGenres" aria-label="Close genres">✕</button>
+      </div>
+      <div class="label">ON YOUR LIST · TAP TO REMOVE</div>
+      <div class="mylist" id="myGenres"></div>
+      <p class="empty" id="myGenresEmpty" hidden>Only Any is on your list. Add genres below.</p>
+      <div class="label">ADD MORE · TAP A GENRE TO SEE STYLES</div>
+      <div class="catalog" id="genreCatalog"></div>
+      <div class="drawer-foot">
+        <button class="btn-ghost" id="resetGenres">RESET TO DEFAULTS</button>
+        <button class="btn-ghost done" id="doneGenres">DONE</button>
+      </div>
+    </section>
+  </div>
+
   <div class="boot" id="boot">
     <div class="boot-inner">
       <div class="brand big" data-text="SIGNAL//WAVE">SIGNAL<b>//</b>WAVE</div>

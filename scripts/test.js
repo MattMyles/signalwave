@@ -5,7 +5,7 @@ const assert = require('assert');
 const http = require('http');
 const net = require('net');
 const { probeStream, isPrivateIp } = require('../lib/icy');
-const { isMusicStation, looksLikeSong, splitTags, matchesGenre } = require('../lib/vet');
+const { isMusicStation, looksLikeSong, splitTags, matchesGenre, resolveGenre } = require('../lib/vet');
 
 let failures = 0;
 async function t(name, fn) {
@@ -27,8 +27,16 @@ function icyBody(metaint, title) {
   await t('sports rejected', () => assert(!isMusicStation(splitTags('sports,rock'))));
   await t('untagged rejected', () => assert(!isMusicStation(splitTags(''))));
   await t('no music tag rejected', () => assert(!isMusicStation(splitTags('community,local'))));
-  await t('genre match', () => assert(matchesGenre(splitTags('deep house,lounge'), 'electronic')));
-  await t('genre mismatch', () => assert(!matchesGenre(splitTags('jazz'), 'rock')));
+  await t('genre match', () => assert(matchesGenre(splitTags('deep house,lounge'), resolveGenre('electronic'))));
+  await t('genre mismatch', () => assert(!matchesGenre(splitTags('jazz'), resolveGenre('rock'))));
+  await t('sub-genre tag resolves', () => assert.deepStrictEqual(resolveGenre(null, 'Deep  House').tags, ['deep house']));
+  await t('bad tag ignored', () => assert.strictEqual(resolveGenre(null, '<script>'), null));
+  await t('sub-genre match', () => assert(matchesGenre(splitTags('shoegaze,dream pop'), resolveGenre(null, 'shoegaze'))));
+  await t('niche tag counts as music when requested', () => {
+    assert(!isMusicStation(splitTags('shoegaze')));
+    assert(isMusicStation(splitTags('shoegaze'), ['shoegaze']));
+  });
+  await t('talk still blocked with a requested tag', () => assert(!isMusicStation(splitTags('shoegaze,talk'), ['shoegaze'])));
 
   console.log('Song titles');
   await t('artist - title ok', () => assert(looksLikeSong('Daft Punk - Around the World', 'Radio X')));

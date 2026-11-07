@@ -1,6 +1,6 @@
 // Caches the app shell and world map so Signal Wave opens instantly and installs as an app.
 // Audio streams and /api calls always go to the network.
-const CACHE = 'signal-wave-v4';
+const CACHE = 'signal-wave-v5';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/icon.svg', '/manifest.webmanifest',
   '/vendor/globe.gl.min.js', '/vendor/countries.geojson'];
 

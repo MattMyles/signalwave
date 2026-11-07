@@ -15,10 +15,28 @@
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const narrow = matchMedia('(max-width: 899px)');
 
-  const GENRES = [
-    ['any', 'Any'], ['electronic', 'Electronic'], ['rock', 'Rock'], ['pop', 'Pop'], ['hiphop', 'Hip-hop'],
-    ['jazz', 'Jazz'], ['classical', 'Classical'], ['ambient', 'Ambient'], ['latin', 'Latin'], ['world', 'World'],
+  // Main genres (matching lib/config.js on the server) and the sub-genres
+  // listeners can add. A sub-genre is sent as a single Radio Browser tag.
+  const CATALOG = [
+    { id: 'electronic', label: 'Electronic', subs: ['house', 'deep house', 'techno', 'trance', 'drum and bass', 'dubstep', 'synthwave', 'electro', 'minimal', 'breakbeat', 'idm', 'edm'] },
+    { id: 'rock', label: 'Rock', subs: ['classic rock', 'indie', 'alternative', 'metal', 'punk', 'hard rock', 'grunge', 'progressive rock', 'post-rock', 'shoegaze'] },
+    { id: 'pop', label: 'Pop', subs: ['top 40', 'k-pop', 'j-pop', 'city pop', 'synthpop', 'indie pop', 'dance pop', '80s', '90s'] },
+    { id: 'hiphop', label: 'Hip-hop & R&B', subs: ['hip-hop', 'rap', 'rnb', 'trap', 'lofi', 'boom bap'] },
+    { id: 'jazz', label: 'Jazz & Blues', subs: ['smooth jazz', 'bebop', 'swing', 'blues', 'soul', 'funk', 'jazz fusion', 'bossa nova'] },
+    { id: 'classical', label: 'Classical', subs: ['baroque', 'opera', 'piano', 'orchestral', 'chamber music', 'contemporary classical'] },
+    { id: 'ambient', label: 'Ambient & Chill', subs: ['chillout', 'lounge', 'downtempo', 'chillwave', 'new age', 'meditation', 'space music'] },
+    { id: 'latin', label: 'Latin', subs: ['salsa', 'reggaeton', 'cumbia', 'bachata', 'tango', 'samba', 'latin pop', 'merengue'] },
+    { id: 'world', label: 'World', subs: ['afrobeat', 'reggae', 'dancehall', 'bollywood', 'celtic', 'flamenco', 'highlife', 'arabic'] },
+    { id: 'country', label: 'Country & Folk', subs: ['country', 'folk', 'bluegrass', 'americana', 'singer-songwriter'] },
   ];
+  const DEFAULT_GENRES = ['electronic', 'rock', 'pop', 'hiphop', 'jazz', 'classical', 'ambient', 'latin', 'world'];
+  const SPECIAL_LABELS = { rnb: 'R&B', idm: 'IDM', edm: 'EDM', lofi: 'Lo-fi', 'k-pop': 'K-Pop', 'j-pop': 'J-Pop', 'top 40': 'Top 40', 'hip-hop': 'Hip-hop', 'drum and bass': 'Drum & Bass', 'post-rock': 'Post-rock' };
+  function genreLabel(id) {
+    if (id === 'any') return 'Any';
+    if (!id.startsWith('tag:')) return (CATALOG.find((c) => c.id === id) || { label: id }).label;
+    const t = id.slice(4);
+    return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+  }
   const POLL_MS = 25000;
   const STALL_MS = 8000;
   const MAX_TITLE_MISSES = 3;
@@ -26,6 +44,7 @@
 
   const state = {
     genre: store.get('sw.genre', 'any'),
+    genres: store.get('sw.genres', DEFAULT_GENRES), // chips on the main list, after "Any"
     favorites: store.get('sw.favorites', []),
     hidden: store.get('sw.hidden', []), // stations flagged "not music"
     showFavDots: store.get('sw.showFavDots', true),
@@ -123,7 +142,8 @@
     const exclude = [...state.played, ...state.hidden, ...state.queue.map((s) => s.uuid)].slice(-250).join(',');
     // Countries just heard (and already queued) so the server picks a different part of the world.
     const recent = [...state.history.slice(-3).map((h) => h.cc), ...state.queue.map((s) => s.countryCode)].filter(Boolean).join(',');
-    const r = await fetch(`/api/next?genre=${encodeURIComponent(genre)}&exclude=${encodeURIComponent(exclude)}&recent=${encodeURIComponent(recent)}`);
+    const which = genre.startsWith('tag:') ? `tag=${encodeURIComponent(genre.slice(4))}` : `genre=${encodeURIComponent(genre)}`;
+    const r = await fetch(`/api/next?${which}&exclude=${encodeURIComponent(exclude)}&recent=${encodeURIComponent(recent)}`);
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.station) {
       const err = new Error(j.error || 'No signal found.');
@@ -718,31 +738,117 @@
   function renderGenres() {
     const nav = $('genres');
     nav.innerHTML = '';
-    for (const [id, label] of GENRES) {
+    for (const id of ['any', ...state.genres]) {
       const b = document.createElement('button');
       b.className = 'chip';
-      b.textContent = label;
+      b.textContent = genreLabel(id);
       b.dataset.genre = id;
       b.setAttribute('aria-pressed', String(id === state.genre));
       b.addEventListener('click', () => setGenre(id));
       nav.appendChild(b);
     }
+    const edit = document.createElement('button');
+    edit.className = 'chip edit';
+    edit.textContent = '+ EDIT';
+    edit.setAttribute('aria-label', 'Edit genres');
+    edit.addEventListener('click', openGenreSheet);
+    nav.appendChild(edit);
   }
   function setGenre(id) {
     if (id === state.genre) return;
     state.genre = id;
     store.set('sw.genre', id);
     state.queue = [];
-    document.querySelectorAll('.chip').forEach((c) => {
+    document.querySelectorAll('#genres .chip').forEach((c) => {
       c.setAttribute('aria-pressed', String(c.dataset.genre === id));
       if (c.dataset.genre === id) c.classList.remove('dead');
     });
-    if (state.started) next(`> SCANNING ${id === 'any' ? 'ALL' : id.toUpperCase()} FREQUENCIES…`);
+    if (state.started) next(`> SCANNING ${id === 'any' ? 'ALL' : genreLabel(id).toUpperCase()} FREQUENCIES…`);
   }
   function markGenreDead(id) {
-    const c = document.querySelector(`.chip[data-genre="${id}"]`);
+    const c = document.querySelector(`#genres .chip[data-genre="${CSS.escape(id)}"]`);
     if (c) c.classList.add('dead');
   }
+
+  // Genre editor: your list (remove) above a catalog of main genres that expand to sub-genres (add).
+  function saveGenres() {
+    store.set('sw.genres', state.genres);
+    if (state.genre !== 'any' && !state.genres.includes(state.genre)) {
+      state.genre = 'any';
+      store.set('sw.genre', 'any');
+      state.queue = [];
+    }
+    renderGenres();
+    renderMyGenres();
+    syncCatalog();
+  }
+  function toggleGenre(id) {
+    state.genres = state.genres.includes(id) ? state.genres.filter((g) => g !== id) : [...state.genres, id];
+    saveGenres();
+  }
+  function renderMyGenres() {
+    const box = $('myGenres');
+    box.innerHTML = '';
+    $('myGenresEmpty').hidden = state.genres.length > 0;
+    for (const id of state.genres) {
+      const b = document.createElement('button');
+      b.className = 'mychip';
+      b.innerHTML = `${esc(genreLabel(id))} <span aria-hidden="true">✕</span>`;
+      b.setAttribute('aria-label', `Remove ${genreLabel(id)}`);
+      b.addEventListener('click', () => toggleGenre(id));
+      box.appendChild(b);
+    }
+  }
+  function buildCatalog() {
+    const box = $('genreCatalog');
+    box.innerHTML = '';
+    for (const main of CATALOG) {
+      const d = document.createElement('details');
+      d.className = 'cat';
+      d.innerHTML = `<summary><span class="cat-name">${esc(main.label)}</span><span class="cat-count mono" data-count="${esc(main.id)}"></span></summary>`;
+      const subs = document.createElement('div');
+      subs.className = 'subs';
+      for (const id of [main.id, ...main.subs.map((t) => `tag:${t}`)]) {
+        const b = document.createElement('button');
+        b.className = 'sub';
+        b.dataset.id = id;
+        b.textContent = id === main.id ? `All ${main.label}` : genreLabel(id);
+        b.addEventListener('click', () => toggleGenre(id));
+        subs.appendChild(b);
+      }
+      d.appendChild(subs);
+      box.appendChild(d);
+    }
+    syncCatalog();
+  }
+  function syncCatalog() {
+    document.querySelectorAll('#genreCatalog .sub').forEach((b) => {
+      const on = state.genres.includes(b.dataset.id);
+      b.setAttribute('aria-pressed', String(on));
+      b.setAttribute('aria-label', `${on ? 'Remove' : 'Add'} ${b.textContent}`);
+    });
+    for (const main of CATALOG) {
+      const n = [main.id, ...main.subs.map((t) => `tag:${t}`)].filter((id) => state.genres.includes(id)).length;
+      const el = document.querySelector(`[data-count="${main.id}"]`);
+      if (el) el.textContent = n ? `${n} ON LIST` : '';
+    }
+  }
+  function openGenreSheet() {
+    renderMyGenres();
+    syncCatalog();
+    $('genreSheet').hidden = false;
+    $('closeGenres').focus();
+  }
+  function closeGenreSheet() {
+    if ($('genreSheet').hidden) return;
+    $('genreSheet').hidden = true;
+    const active = document.querySelector('#genres .chip[aria-pressed="true"]');
+    if (active) active.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
+  $('closeGenres').addEventListener('click', closeGenreSheet);
+  $('doneGenres').addEventListener('click', closeGenreSheet);
+  $('genreSheet').addEventListener('click', (e) => { if (e.target === $('genreSheet')) closeGenreSheet(); });
+  $('resetGenres').addEventListener('click', () => { state.genres = [...DEFAULT_GENRES]; saveGenres(); });
 
   /* ---------- Media Session (lock screen) ---------- */
   function updateMediaSession() {
@@ -820,7 +926,7 @@
     if (e.key === 'n' || e.key === 'ArrowRight') next();
     if (e.key === ' ' && !e.target.closest('button')) { e.preventDefault(); togglePlay(); }
     if (e.key === 'f') toggleFavorite();
-    if (e.key === 'Escape') closeDrawer();
+    if (e.key === 'Escape') { closeGenreSheet(); closeDrawer(); }
   });
 
   /* ---------- Boot ---------- */
@@ -828,6 +934,7 @@
   new ResizeObserver(refitAll).observe($('favList'));
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(refitAll);
   renderGenres();
+  buildCatalog();
   renderFavorites();
   requestAnimationFrame(drawViz);
   const log = $('bootLog');
