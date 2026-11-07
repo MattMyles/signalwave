@@ -12,6 +12,7 @@ const routes = {
   '/api/config': require('./api/config'),
   '/api/keepalive': require('./api/keepalive'),
   '/api/track': require('./api/track'),
+  '/api/station': require('./api/station'),
   '/api/admin-stats': require('./api/admin-stats'),
 };
 const TYPES = {

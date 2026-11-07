@@ -94,6 +94,14 @@
     <label class="toggle"><input type="checkbox" id="showFavDots" checked> Show on globe</label>
     <ul class="favlist" id="favList"></ul>
     <p class="empty" id="favEmpty">No saved stations yet. Tap ♥ while a station plays to keep it here.</p>
+    <div class="add-shared">
+      <div class="label">ADD A SHARED STATION</div>
+      <form class="authform" id="addForm">
+        <input id="addLink" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste a station link" aria-label="Shared station link">
+        <button class="btn-ghost" type="submit">ADD</button>
+      </form>
+      <p class="hint" id="addMsg" hidden></p>
+    </div>
     <div class="drawer-foot">
       <button class="btn-ghost" id="exportFavs">EXPORT</button>
       <label class="btn-ghost" for="importFile">IMPORT</label>

@@ -37,7 +37,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '13'; // shown in the Saved panel, to check which version is running
+  const BUILD = '14'; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
   const RETRY_GAP_MS = 60000; // at most one automatic reconnect per minute before skipping
@@ -864,6 +864,9 @@
           <span class="where"><span class="scroll">${flag(f.countryCode)} ${esc(f.city)}, ${esc(f.country)}</span></span>
           ${f.lastSong ? `<span class="last"><span class="scroll">Last heard: ${esc(f.lastSong)}</span></span>` : ''}
         </button>
+        <button class="share" data-share="${esc(f.uuid)}" aria-label="Copy a link to ${esc(f.name)}" title="Copy link">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
         <button class="del" data-del="${esc(f.uuid)}" aria-label="Remove ${esc(f.name)}">✕</button>`;
       const img = li.querySelector('img');
       if (img) img.onerror = () => img.replaceWith(Object.assign(document.createElement('span'), { className: 'noicon', textContent: 'FM' }));
@@ -875,7 +878,11 @@
   $('favList').addEventListener('click', (e) => {
     const play = e.target.closest('[data-play]');
     const del = e.target.closest('[data-del]');
-    if (play) {
+    const share = e.target.closest('[data-share]');
+    if (share) {
+      const f = state.favorites.find((x) => x.uuid === share.dataset.share);
+      if (f) shareStation(f);
+    } else if (play) {
       const f = state.favorites.find((x) => x.uuid === play.dataset.play);
       if (f) { if (narrow.matches) closeDrawer(); tuneSaved(f); }
     } else if (del) {
@@ -886,6 +893,93 @@
       toast(`> REMOVED ${removed.name.toUpperCase()}`, { label: 'UNDO', fn: () => { state.favorites.splice(idx, 0, removed); saveFavs(); setFavButton(); } });
     }
   });
+
+  /* ---------- Sharing stations ----------
+     A shared link is the site address plus ?station=<id>. Opening it adds the
+     station to saved stations and plays it first; pasting it into "Add a
+     shared station" in the Saved panel adds it too. */
+  const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+  const stationLink = (uuid) => `${location.origin}/?station=${uuid}`;
+
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (_) { /* older browsers */ }
+    const t = Object.assign(document.createElement('textarea'), { value: text });
+    t.setAttribute('readonly', '');
+    t.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(t);
+    t.select(); t.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+    t.remove();
+    return ok;
+  }
+
+  async function shareStation(f) {
+    const url = stationLink(f.uuid);
+    const text = `Listen to ${f.name} from ${f.city} on Signal Wave`;
+    const canShare = typeof navigator.share === 'function';
+    if (await copyText(url)) {
+      toast('> LINK COPIED', canShare ? { label: 'SHARE…', fn: () => navigator.share({ title: f.name, text, url }).catch(() => {}) } : null);
+    } else if (canShare) {
+      navigator.share({ title: f.name, text, url }).catch(() => {});
+    } else {
+      toast(`> COPY THIS LINK: ${url}`);
+    }
+  }
+
+  // Looks the station up, saves it, and returns it (or null with a message).
+  async function addSharedStation(uuid, { quiet = false } = {}) {
+    const existing = state.favorites.find((x) => x.uuid === uuid);
+    if (existing) { if (!quiet) toast('> ALREADY IN SAVED'); return existing; }
+    let j = {};
+    let ok = false;
+    try {
+      const r = await fetch(`/api/station?uuid=${encodeURIComponent(uuid)}`);
+      j = await r.json().catch(() => ({}));
+      ok = r.ok && j.station;
+    } catch (_) { j = { error: "Couldn't reach the server. Check your connection." }; }
+    if (!ok) { addMsg(j.error || "Couldn't find that station.", true); toast('> COULDN\'T ADD THAT SIGNAL'); return null; }
+    const s = j.station;
+    state.favorites.unshift({
+      uuid: s.uuid, name: s.name, url: s.url, favicon: s.favicon, tags: s.tags, genre: s.genre,
+      city: s.city, country: s.country, countryCode: s.countryCode, lat: s.lat, lng: s.lng,
+      bitrate: s.bitrate, codec: s.codec, cors: s.cors, lastSong: s.lastSong, addedAt: new Date().toISOString(),
+    });
+    saveFavs();
+    setFavButton();
+    toast(`> SAVED ${s.name.toUpperCase()}`);
+    addMsg(s.live ? `Added ${s.name} (${s.city}, ${s.country}).` : `Added ${s.name}. It isn't answering right now, so it may be off the air.`);
+    return state.favorites[0];
+  }
+  function addMsg(text, warn = false) {
+    const el = $('addMsg');
+    el.textContent = text;
+    el.classList.toggle('warn', warn);
+    el.hidden = !text;
+  }
+
+  $('addForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const m = UUID_RE.exec($('addLink').value);
+    if (!m) { addMsg('Paste a Signal Wave station link (it contains ?station=…).', true); return; }
+    const btn = $('addForm').querySelector('button');
+    btn.disabled = true;
+    addMsg('Looking up the station…');
+    const f = await addSharedStation(m[0].toLowerCase());
+    btn.disabled = false;
+    if (f) $('addLink').value = '';
+  });
+
+  // Opened from a shared link: save the station and play it first.
+  let sharedOnOpen = null;
+  (() => {
+    const params = new URLSearchParams(location.search);
+    const m = UUID_RE.exec(params.get('station') || '');
+    if (!m) return;
+    history.replaceState(null, '', location.pathname); // keep the address clean
+    $('bootLog').textContent = '> SHARED SIGNAL RECEIVED';
+    sharedOnOpen = addSharedStation(m[0].toLowerCase(), { quiet: true });
+  })();
 
   async function tuneSaved(f) {
     if (state.switching) return;
@@ -1099,7 +1193,13 @@
     fillQueue();
   }
 
-  $('jackIn').addEventListener('click', () => start(true));
+  $('jackIn').addEventListener('click', async () => {
+    if (!sharedOnOpen) return start(true);
+    start(false);
+    const f = await sharedOnOpen;
+    sharedOnOpen = null;
+    if (f) tuneSaved(f); else next();
+  });
   $('nextBtn').addEventListener('click', () => (state.started ? next() : start(true)));
   $('prevBtn').addEventListener('click', prev);
   $('playBtn').addEventListener('click', () => togglePlay());
@@ -1318,7 +1418,7 @@
   requestAnimationFrame(drawViz);
   const log = $('bootLog');
   initGlobe().then(() => {
-    log.textContent = '> WORLD GRID ONLINE // READY';
+    log.textContent = sharedOnOpen ? '> SHARED SIGNAL RECEIVED // JACK IN TO PLAY' : '> WORLD GRID ONLINE // READY';
     updatePoints();
   });
   fillQueue(); // start vetting while the boot screen is up

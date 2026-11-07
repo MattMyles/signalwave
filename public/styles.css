@@ -260,7 +260,7 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 .toggle { font-size: 12px; color: var(--dim); letter-spacing: 0.1em; display: flex; gap: 8px; align-items: center; }
 .toggle input { accent-color: var(--yellow); }
 .favlist { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
-.favlist li { display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: center; border: 1px solid var(--line); padding: 8px 10px; }
+.favlist li { display: grid; grid-template-columns: 36px 1fr auto auto; gap: 6px 8px; align-items: center; border: 1px solid var(--line); padding: 8px 10px; }
 .favlist li.playing { border-color: var(--yellow); }
 .favlist img, .favlist .noicon { width: 36px; height: 36px; object-fit: contain; background: #0c141b; display: grid; place-items: center; color: var(--cyan); font-size: 12px; }
 .favlist .info { min-width: 0; text-align: left; background: none; border: 0; padding: 0; }
@@ -269,6 +269,9 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 .favlist .last { display: block; font-size: 11px; color: var(--dim); overflow: hidden; white-space: nowrap; }
 .favlist .del { background: none; border: 0; color: var(--dim); font-size: 18px; width: 36px; height: 36px; }
 .favlist .del:hover { color: var(--magenta); }
+.favlist .share { background: none; border: 0; color: var(--cyan); width: 36px; height: 36px; display: grid; place-items: center; }
+.favlist .share:hover { color: var(--yellow); }
+.add-shared { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
 .empty { color: var(--dim); font-size: 13px; margin: 0; }
 .drawer-foot { display: flex; gap: 10px; }
 

@@ -11,6 +11,9 @@
     },
     "api/admin-stats.js": {
       "maxDuration": 15
+    },
+    "api/station.js": {
+      "maxDuration": 15
     }
   },
   "crons": [

@@ -51,6 +51,7 @@ around the two handlers.
 | `lib/geo.js` | Offline city lookup from `lib/cities.json` (no outside service) |
 | `api/config.js` | Tells the app whether sync is set up (reads Vercel env vars) |
 | `api/keepalive.js` | Daily ping that stops the free Supabase project pausing |
+| `api/station.js` | Looks up one station for a shared link |
 | `api/track.js` | Records a play after 30 s of listening (server-only key) |
 | `api/admin-stats.js` | Dashboard numbers, for ADMIN_EMAILS only |
 | `public/admin.html`, `admin.js` | The private dashboard page at `/admin` |
@@ -107,6 +108,14 @@ How it counts: a play is recorded after 30 seconds of listening. Listeners are
 counted per browser with a random ID (no IP addresses or locations), so one
 person on two devices counts twice. The play log can't be read with the public
 key; only the server can read it.
+
+## Sharing stations
+
+Each saved station has a link button that copies `your-site/?station=<id>`
+(with a Share… option on phones). Opening that link adds the station to the
+other person's saved list and plays it first; pasting it into **Add a shared
+station** in the Saved panel adds it too. `/api/station` looks the station up
+(it doesn't require song titles, since the person picked it on purpose).
 
 ## Genres
 
