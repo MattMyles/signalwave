@@ -37,7 +37,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '12'; // shown in the Saved panel, to check which version is running
+  const BUILD = '13'; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
   const RETRY_GAP_MS = 60000; // at most one automatic reconnect per minute before skipping
@@ -208,7 +208,15 @@
     const g = state.genre;
     let station = state.queue.shift();
     try {
-      if (!station) station = await fetchStation(g);
+      if (!station) {
+        try {
+          station = await fetchStation(g);
+        } catch (e) {
+          if (e.status !== 503 && e.status !== 502) throw e;
+          status('> STILL SCANNING — WIDENING SEARCH…');
+          station = await fetchStation(g); // one quiet retry; the server keeps what it learned
+        }
+      }
     } catch (e) {
       if (e.status === 503 && g !== 'any') markGenreDead(g);
       status(`> ${e.message.toUpperCase()}`, true);

@@ -48,7 +48,7 @@ around the two handlers.
 | `lib/vet.js` | The five station checks and the per-genre cache |
 | `lib/icy.js` | Reads ICY song titles from streams (handles old SHOUTcast servers) |
 | `lib/radio.js` | Radio Browser API client with mirror failover |
-| `lib/geo.js` | City lookup via OpenStreetMap Nominatim (rate-limited, cached) |
+| `lib/geo.js` | Offline city lookup from `lib/cities.json` (no outside service) |
 | `api/config.js` | Tells the app whether sync is set up (reads Vercel env vars) |
 | `api/keepalive.js` | Daily ping that stops the free Supabase project pausing |
 | `api/track.js` | Records a play after 30 s of listening (server-only key) |
@@ -135,3 +135,8 @@ iMessage caches previews, so a link pasted before an update may keep the old loo
 - "Not music? Hide station" remembers hidden stations in the browser.
 - Before going public, change `USER_AGENT` in `lib/config.js` to include your
   site URL; Nominatim and Radio Browser both ask for an identifying agent.
+
+## Credits
+
+City names: [GeoNames](https://www.geonames.org/) (CC BY 4.0), via the `all-the-cities` package (MIT).
+Station directory: [Radio Browser](https://www.radio-browser.info/).
