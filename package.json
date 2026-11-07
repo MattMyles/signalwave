@@ -5,6 +5,7 @@
   "description": "Random world radio with a neon globe.",
   "scripts": {
     "dev": "node server.js",
+    "build": "node scripts/build-meta.js",
     "test": "node scripts/test.js"
   },
   "engines": { "node": ">=18" }

@@ -86,6 +86,14 @@ Tap **+ EDIT** at the end of the genre row to remove genres or add sub-genres.
 The list is saved in the browser. To add sub-genres to the menu, edit `CATALOG` in
 `public/app.js`; main genres and their tags live in `lib/config.js`.
 
+## Link previews and icons
+
+`public/og-image.png` is the card shown when the link is pasted into Messages,
+WhatsApp, Slack and so on. On deploy, `npm run build` (scripts/build-meta.js)
+fills in the site's full address, which iMessage needs. If you add a custom
+domain, set `SITE_URL` in Vercel to it so previews use that address.
+iMessage caches previews, so a link pasted before an update may keep the old look.
+
 ## Keyboard
 
 `N` or `→` next station · `P` or `←` previous station · `Space` play/pause · `F` save · `Esc` close saved list

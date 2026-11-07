@@ -447,9 +447,16 @@
   let globe = null;
   let idleTimer;
 
-  function initGlobe() {
-    if (typeof Globe !== 'function') { $('bootLog').textContent = '> GLOBE OFFLINE — AUDIO ONLY'; return Promise.resolve(); }
-    globe = new Globe(globeEl, { rendererConfig: { antialias: !narrow.matches, alpha: true } })
+  let countryFeatures = null;
+  let lastFrame = -1;
+  let stalls = 0;
+  let rebuilding = false;
+
+  // Creates the globe and all its layers. Called once at start, and again if
+  // the browser takes the graphics context away (iPhones do this under memory
+  // pressure or after the app has been in the background).
+  function createGlobe() {
+    globe = new Globe(globeEl, { rendererConfig: { antialias: !narrow.matches, alpha: true, powerPreference: 'low-power' } })
       .backgroundColor('rgba(0,0,0,0)')
       .showAtmosphere(true)
       .atmosphereColor('#b84dff')
@@ -465,6 +472,10 @@
       .arcDashLength('dash').arcDashGap('gap').arcDashInitialGap('initial').arcDashAnimateTime('time')
       .particlesList('pts').particleLat('lat').particleLng('lng').particleAltitude('alt')
       .particlesColor('color').particlesSize('size').particlesSizeAttenuation(false)
+      // Decorative layers get empty hover labels. The library's default label
+      // reads a "name" field, which particles don't have; touching one used to
+      // throw inside the animation loop and freeze the globe.
+      .particleLabel(() => '').arcLabel(() => '').hexPolygonLabel(() => '')
       .pointLat('lat').pointLng('lng')
       .pointColor('color').pointAltitude('alt').pointRadius('r')
       .pointsMerge(false)
@@ -488,18 +499,94 @@
     if ('emissiveIntensity' in mat) mat.emissiveIntensity = 0.3;
     if ('shininess' in mat) mat.shininess = 6;
 
-    globe.renderer().setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    // Phones get a lower render resolution: a big saving in graphics memory
+    // with little visible difference on a small, glowing globe.
+    globe.renderer().setPixelRatio(Math.min(devicePixelRatio || 1, narrow.matches ? 1.5 : 2));
     const controls = globe.controls();
     controls.autoRotate = !reduced;
     controls.autoRotateSpeed = 0.4;
     controls.enableDamping = true;
+    // Zoom limits: the globe's radius is 100 units, so 130 keeps the camera
+    // above the city beams and dots; 520 stops it shrinking to a speck.
+    controls.minDistance = 130;
+    controls.maxDistance = 520;
     controls.addEventListener('start', () => { clearTimeout(idleTimer); controls.autoRotate = false; });
     controls.addEventListener('end', () => scheduleDrift());
-    globe.pointOfView({ lat: 20, lng: -30, altitude: 2.4 });
+
+    const canvas = globe.renderer().domElement;
+    canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); setTimeout(rebuildGlobe, 400); });
 
     sizeGlobe();
+    lastFrame = -1;
+    stalls = 0;
+  }
+
+  function applyGlobeData() {
+    if (!globe) return;
+    if (countryFeatures) globe.hexPolygonsData(countryFeatures);
+    buildNetwork();
+    updatePoints();
+    updateRings();
+    const s = state.current;
+    if (s) {
+      globe.htmlElementsData([{ lat: s.lat, lng: s.lng, city: s.city }]);
+      globe.pointOfView({ lat: s.lat, lng: s.lng, altitude: 1.8 }, 0);
+      scheduleDrift();
+    }
+  }
+
+  function rebuildGlobe() {
+    if (rebuilding || typeof Globe !== 'function') return;
+    rebuilding = true;
+    const pov = globe ? globe.pointOfView() : null;
+    try { if (globe && globe._destructor) globe._destructor(); } catch (_) { /* already gone */ }
+    globeEl.innerHTML = '';
+    globe = null;
+    createGlobe();
+    applyGlobeData();
+    if (pov && !state.current) globe.pointOfView(pov, 0);
+    rebuilding = false;
+  }
+
+  // Watchdog: every 3 seconds, check the globe has drawn new frames. If not,
+  // restart its animation; if that doesn't help or the graphics context is
+  // gone, rebuild it.
+  function checkGlobe() {
+    if (!globe || document.hidden || rebuilding) return;
+    let frame = -1;
+    let lost = false;
+    try {
+      const r = globe.renderer();
+      frame = r.info.render.frame;
+      lost = r.getContext().isContextLost();
+    } catch (_) { lost = true; }
+    if (lost) { rebuildGlobe(); return; }
+    if (frame === lastFrame) {
+      stalls++;
+      if (stalls >= 2) { rebuildGlobe(); return; }
+      globe.resumeAnimation();
+    } else {
+      stalls = 0;
+    }
+    lastFrame = frame;
+  }
+
+  function wakeGlobe() {
+    if (!globe || document.hidden) return;
+    globe.resumeAnimation();
+    lastFrame = -1; // give it a fresh check
+    setTimeout(checkGlobe, 1500);
+  }
+
+  function initGlobe() {
+    if (typeof Globe !== 'function') { $('bootLog').textContent = '> GLOBE OFFLINE — AUDIO ONLY'; return Promise.resolve(); }
+    createGlobe();
+    globe.pointOfView({ lat: 20, lng: -30, altitude: 2.4 });
     new ResizeObserver(sizeGlobe).observe(globeEl);
-    document.addEventListener('visibilitychange', () => (document.hidden ? globe.pauseAnimation() : globe.resumeAnimation()));
+    document.addEventListener('visibilitychange', () => (document.hidden ? globe && globe.pauseAnimation() : wakeGlobe()));
+    window.addEventListener('pageshow', wakeGlobe);
+    window.addEventListener('focus', wakeGlobe);
+    setInterval(checkGlobe, 3000);
 
     return fetch('vendor/countries.geojson')
       .then((r) => r.json())
@@ -509,10 +596,10 @@
         const palette = ['rgba(255, 62, 200, 0.95)', 'rgba(255, 62, 200, 0.8)', 'rgba(190, 90, 255, 0.85)',
           'rgba(150, 80, 255, 0.7)', 'rgba(255, 90, 220, 0.9)', 'rgba(170, 70, 255, 0.8)', 'rgba(0, 240, 255, 0.85)'];
         geo.features.forEach((f) => { f.properties.color = palette[Math.floor(rnd() * palette.length)]; });
-        globe.hexPolygonsData(geo.features);
+        countryFeatures = geo.features;
       })
       .catch(() => {})
-      .then(() => { buildNetwork(); updatePoints(); updateRings(); });
+      .then(applyGlobeData);
   }
 
   /* World network dressing: hub cities as glowing towers, data arcs between

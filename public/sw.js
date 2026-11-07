@@ -1,8 +1,9 @@
 // Caches the app shell and world map so Signal Wave opens instantly and installs as an app.
 // Audio streams and /api calls always go to the network.
-const CACHE = 'signal-wave-v8';
+const CACHE = 'signal-wave-v9';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/icon.svg', '/manifest.webmanifest',
-  '/vendor/globe.gl.min.js', '/vendor/countries.geojson', '/vendor/supabase.js'];
+  '/vendor/globe.gl.min.js', '/vendor/countries.geojson', '/vendor/supabase.js',
+  '/favicon.svg', '/apple-touch-icon.png', '/icon-192.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
