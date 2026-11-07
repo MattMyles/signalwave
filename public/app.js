@@ -51,6 +51,7 @@
     history: [],
     played: new Set(),
     queue: [],
+    back: [], // stations heard before the current one, for the previous button
     inflight: 0,
     current: null,
     title: null,
@@ -187,13 +188,18 @@
       return;
     }
     fillQueue();
-    await tune(station).catch(() => {});
+    await tune(station, { remember: !isWarning }).catch(() => {});
     state.switching = false;
     setBusy(false);
   }
 
-  async function tune(station) {
+  // opts.remember = false skips adding the outgoing station to the back list
+  // (used when it failed, or when we're stepping back ourselves).
+  async function tune(station, opts = {}) {
     clearTimers();
+    if (state.current && state.current.uuid !== station.uuid && opts.remember !== false) {
+      state.back = [...state.back.filter((b) => b.uuid !== state.current.uuid), state.current].slice(-30);
+    }
     state.current = station;
     state.played.add(station.uuid);
     state.history.push({ uuid: station.uuid, lat: station.lat, lng: station.lng, cc: station.countryCode });
@@ -207,6 +213,26 @@
     renderFavorites();
     playUrl(station);
     state.timers.poll = setInterval(pollTitle, POLL_MS);
+    setPrevButton();
+  }
+
+  // Steps back one station. The station you leave goes to the front of the
+  // queue, so NEXT brings you forward to it again.
+  async function prev() {
+    if (state.switching || !state.back.length) return;
+    const station = state.back.pop();
+    if (state.current) state.queue.unshift(state.current);
+    state.switching = true;
+    setBusy(true);
+    status('> RETUNING TO PREVIOUS SIGNAL…');
+    await tune({ ...station, title: null }, { remember: false }).catch(() => {});
+    state.switching = false;
+    setBusy(false);
+    pollTitle();
+  }
+  function setPrevButton() {
+    const b = $('prevBtn');
+    b.disabled = state.switching || !state.back.length;
   }
 
   function clearTimers() {
@@ -351,6 +377,7 @@
   function setBusy(on) {
     $('nextBtn').classList.toggle('busy', on);
     $('nextBtn').disabled = on;
+    $('prevBtn').disabled = on || !state.back.length;
     if (on) setLive(false);
   }
   function setPlayButton() {
@@ -870,6 +897,7 @@
       navigator.mediaSession.setActionHandler('play', () => togglePlay(true));
       navigator.mediaSession.setActionHandler('pause', () => togglePlay(false));
       navigator.mediaSession.setActionHandler('nexttrack', () => next());
+      navigator.mediaSession.setActionHandler('previoustrack', () => prev());
     } catch (_) { /* unsupported action */ }
   }
 
@@ -908,6 +936,7 @@
 
   $('jackIn').addEventListener('click', () => start(true));
   $('nextBtn').addEventListener('click', () => (state.started ? next() : start(true)));
+  $('prevBtn').addEventListener('click', prev);
   $('playBtn').addEventListener('click', () => togglePlay());
   $('favBtn').addEventListener('click', toggleFavorite);
   $('openFavs').addEventListener('click', () => ($('drawer').hidden ? openDrawer() : closeDrawer()));
@@ -926,6 +955,7 @@
   document.addEventListener('keydown', (e) => {
     if (e.target.closest('input, textarea')) return;
     if (e.key === 'n' || e.key === 'ArrowRight') next();
+    if (e.key === 'p' || e.key === 'ArrowLeft') prev();
     if (e.key === ' ' && !e.target.closest('button')) { e.preventDefault(); togglePlay(); }
     if (e.key === 'f') toggleFavorite();
     if (e.key === 'Escape') { closeGenreSheet(); closeDrawer(); }

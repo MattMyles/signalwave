@@ -88,7 +88,7 @@ The list is saved in the browser. To add sub-genres to the menu, edit `CATALOG` 
 
 ## Keyboard
 
-`N` or `→` next station · `Space` play/pause · `F` save · `Esc` close saved list
+`N` or `→` next station · `P` or `←` previous station · `Space` play/pause · `F` save · `Esc` close saved list
 
 ## Notes
 
