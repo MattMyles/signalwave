@@ -1,0 +1,11 @@
+{
+  "name": "signal-wave",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Random world radio with a neon globe.",
+  "scripts": {
+    "dev": "node server.js",
+    "test": "node scripts/test.js"
+  },
+  "engines": { "node": ">=18" }
+}

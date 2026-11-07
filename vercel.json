@@ -1,0 +1,6 @@
+{
+  "functions": {
+    "api/next.js": { "maxDuration": 45 },
+    "api/nowplaying.js": { "maxDuration": 15 }
+  }
+}

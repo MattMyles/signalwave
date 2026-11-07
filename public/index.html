@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Signal Wave</title>
+  <meta name="description" content="Random live music radio from anywhere on Earth, on a neon globe.">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Share+Tech+Mono&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand" aria-label="Signal Wave">SIGNAL<b>//</b>WAVE</div>
+    <div class="coords mono" id="coords" aria-hidden="true">--.--°  --.--°</div>
+    <button class="btn-ghost" id="openFavs" aria-controls="drawer" aria-expanded="false">
+      <span class="heart" aria-hidden="true">♥</span> SAVED <span id="favCount" class="mono">0</span>
+    </button>
+  </header>
+
+  <div id="globe" aria-label="Globe showing where the station is broadcasting from" role="img"></div>
+  <button class="btn-icon" id="recenter" aria-label="Fly back to the playing station" title="Recenter">⌖</button>
+
+  <main class="hud">
+    <section class="panel" id="panel" aria-live="polite">
+      <div class="panel-head">
+        <span class="live" id="live"><i></i><span id="liveText">STANDBY</span></span>
+        <span class="mono sig" id="sig" title="Stream bitrate">SIG ▯▯▯▯</span>
+      </div>
+
+      <div class="label">NOW PLAYING</div>
+      <div class="song" id="song"><span class="scroll" id="songText">// AWAITING SIGNAL</span></div>
+
+      <dl class="meta">
+        <div><dt>STATION</dt><dd><span class="scroll" id="station">—</span></dd></div>
+        <div><dt>GENRE</dt><dd><span class="scroll" id="genre">—</span></dd></div>
+        <div><dt>CITY</dt><dd><span class="scroll" id="city">—</span></dd></div>
+        <div><dt>COUNTRY</dt><dd><span class="scroll" id="country">—</span></dd></div>
+      </dl>
+
+      <canvas id="viz" height="40" aria-hidden="true"></canvas>
+      <div class="statusline mono" id="statusline"><span class="scroll" id="statusText">&gt; SYSTEM READY</span></div>
+      <button class="flag" id="flagTalk" title="Hide this station for good">NOT MUSIC? HIDE STATION</button>
+    </section>
+
+    <nav class="genres" id="genres" aria-label="Genre"></nav>
+
+    <div class="controls">
+      <button class="ctl fav" id="favBtn" aria-pressed="false" aria-label="Save station">♥</button>
+      <button class="ctl play" id="playBtn" aria-label="Pause">❚❚</button>
+      <button class="ctl next" id="nextBtn"><span aria-hidden="true">⟳</span> NEXT</button>
+    </div>
+  </main>
+
+  <aside class="drawer" id="drawer" aria-label="Saved stations" hidden>
+    <div class="drawer-head">
+      <h2>SAVED SIGNALS</h2>
+      <button class="btn-icon" id="closeFavs" aria-label="Close saved stations">✕</button>
+    </div>
+    <label class="toggle"><input type="checkbox" id="showFavDots" checked> Show on globe</label>
+    <ul class="favlist" id="favList"></ul>
+    <p class="empty" id="favEmpty">No saved stations yet. Tap ♥ while a station plays to keep it here.</p>
+    <div class="drawer-foot">
+      <button class="btn-ghost" id="exportFavs">EXPORT</button>
+      <label class="btn-ghost" for="importFile">IMPORT</label>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
+  </aside>
+
+  <div class="boot" id="boot">
+    <div class="boot-inner">
+      <div class="brand big" data-text="SIGNAL//WAVE">SIGNAL<b>//</b>WAVE</div>
+      <p class="mono boot-log" id="bootLog">&gt; LOADING WORLD GRID…</p>
+      <p class="boot-copy">Live music radio from a random city on Earth. Music only, every station checked first.</p>
+      <button class="jack" id="jackIn">JACK IN</button>
+    </div>
+  </div>
+
+  <div class="toast mono" id="toast" role="status" hidden></div>
+  <audio id="audio" preload="none" playsinline></audio>
+
+  <script src="vendor/globe.gl.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
