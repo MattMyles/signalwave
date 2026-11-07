@@ -290,6 +290,8 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 .btn-ghost.danger { color: var(--magenta); border-color: rgba(255, 42, 109, 0.4); }
 .btn-ghost.danger.armed { color: #000; background: var(--magenta); }
 
+.build { margin: 4px 0 0; font-size: 10px; color: var(--dim); letter-spacing: 0.12em; text-align: right; }
+
 /* Boot screen */
 .boot {
   position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.92); display: grid; place-items: center;

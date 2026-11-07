@@ -37,6 +37,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
+  const BUILD = '10'; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
   const MAX_TITLE_MISSES = 3;
@@ -1233,6 +1234,7 @@
   new ResizeObserver(refitAll).observe($('panel'));
   new ResizeObserver(refitAll).observe($('favList'));
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(refitAll);
+  $('buildTag').textContent = `BUILD ${BUILD}`;
   renderGenres();
   buildCatalog();
   renderFavorites();

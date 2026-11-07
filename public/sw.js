@@ -1,6 +1,9 @@
-// Caches the app shell and world map so Signal Wave opens instantly and installs as an app.
-// Audio streams and /api calls always go to the network.
-const CACHE = 'signal-wave-v9';
+// Signal Wave service worker.
+// - App files (page, script, styles): network first, so a new deploy shows up
+//   on the next open; the cached copy is only used when offline.
+// - Big vendor files and the map: cache first (they rarely change).
+// - Audio streams and /api calls: never touched.
+const CACHE = 'signal-wave-v10';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/icon.svg', '/manifest.webmanifest',
   '/vendor/globe.gl.min.js', '/vendor/countries.geojson', '/vendor/supabase.js',
   '/favicon.svg', '/apple-touch-icon.png', '/icon-192.png'];
@@ -15,10 +18,16 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.startsWith('/api/')) return;
-  // Stale-while-revalidate: serve the cached copy, refresh it in the background.
-  e.respondWith(caches.open(CACHE).then(async (cache) => {
-    const cached = await cache.match(e.request);
-    const fresh = fetch(e.request).then((r) => { if (r.ok) cache.put(e.request, r.clone()); return r; }).catch(() => cached);
-    return cached || fresh;
-  }));
+
+  if (url.pathname.startsWith('/vendor/')) {
+    e.respondWith(caches.match(e.request).then((hit) => hit || fetch(e.request).then((r) => {
+      if (r.ok) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
+      return r;
+    })));
+    return;
+  }
+  e.respondWith(fetch(e.request, { cache: 'no-cache' }).then((r) => {
+    if (r.ok) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
+    return r;
+  }).catch(() => caches.match(e.request).then((hit) => hit || caches.match('/index.html'))));
 });
