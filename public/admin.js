@@ -45,6 +45,7 @@
     if (!r.ok) return problem('Setup needed', j.error || `The server answered ${r.status}.`, false);
     $('whoEmail').textContent = j.email;
     render(j.stats);
+    renderChecks(j.checks, j.directory);
     show('dash');
   }
 
@@ -97,6 +98,43 @@
         <td>${esc(x.station_name || 'Unnamed station')}${x.signed_in ? '<span class="tag">SIGNED IN</span>' : ''}</td>
         <td>${flag(x.country_code)} ${esc([x.city, x.country].filter(Boolean).join(', '))}</td></tr>`).join('')}</tbody></table>`
       : '<p class="empty">No plays yet.</p>';
+  }
+
+  // Why stations were turned away, from each checked station's latest result.
+  const REASONS = {
+    passed: 'Passed every check',
+    no_song_titles: 'No song titles in the stream',
+    slow_or_offline: 'Slow to respond or offline',
+    not_audio: 'Not a playable audio stream',
+    not_music: 'Talk, news or no music tags',
+    no_city: 'No city or town nearby',
+    no_coords: 'No map location',
+    not_https: 'Not a secure (HTTPS) stream',
+    playlist: 'Playlist or HLS stream',
+  };
+  function renderChecks(c, dir) {
+    const box = $('checks');
+    const dirFig = dir && dir.stations
+      ? `<div class="fig"><span class="k">IN THE DIRECTORY</span><span class="v">${fmt(dir.stations)}</span><span class="s">Radio Browser total${dir.stationsBroken ? ` · <b>${fmt(dir.stationsBroken)}</b> marked broken` : ''}</span></div>`
+      : '<div class="fig"><span class="k">IN THE DIRECTORY</span><span class="v">—</span><span class="s">Radio Browser didn\'t answer</span></div>';
+    if (!c) {
+      box.innerHTML = `<div class="figs">${dirFig}</div><p class="note">Run <span class="mono">supabase/migrations/20261107190000_station_checks.sql</span> in Supabase to start counting check results.</p>`;
+      return;
+    }
+    const pct = c.checked ? Math.round((100 * c.passed) / c.checked) : 0;
+    const by = c.by_result || {};
+    const rows = Object.keys(REASONS).filter((k) => k !== 'passed' && by[k]).sort((a, b) => by[b] - by[a]);
+    const line = (k) => `<div class="reason${k === 'passed' ? ' pass' : ''}"><span class="label">${REASONS[k]}</span>
+      <span class="n">${fmt(by[k] || 0)}<small>${c.checked ? Math.round((100 * (by[k] || 0)) / c.checked) : 0}%</small></span>
+      <span class="meter"><i style="width:${c.checked ? (100 * (by[k] || 0)) / c.checked : 0}%"></i></span></div>`;
+    box.innerHTML = `<div class="figs">
+        ${dirFig}
+        <div class="fig"><span class="k">CHECKED BY SIGNAL WAVE</span><span class="v">${fmt(c.checked)}</span><span class="s"><b>${fmt(c.checked_7d)}</b> checked this week</span></div>
+        <div class="fig"><span class="k">PASSED EVERY CHECK</span><span class="v" style="color:var(--green)">${fmt(c.passed)}</span><span class="s"><b>${pct}%</b> of checked · in <b>${fmt(c.passed_countries)}</b> countries</span></div>
+      </div>
+      ${c.checked ? `<div class="reasons">${line('passed')}${rows.length ? '<div class="subhead" style="margin-top:8px">TURNED AWAY BECAUSE</div>' : ''}${rows.map(line).join('')}</div>`
+        : '<p class="empty">No stations checked yet. Results appear after the next station search.</p>'}
+      <p class="note" style="margin-top:14px">Each station counts once, with its latest result. Only stations Signal Wave has looked at so far are counted, not the whole directory. Slow or offline stations are rechecked after 20 minutes; the rest after 6 hours.</p>`;
   }
 
   function ago(iso) {

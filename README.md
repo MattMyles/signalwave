@@ -98,6 +98,11 @@ can see it.
    - `ADMIN_EMAILS` = the email you sign in with (comma-separate several).
 3. **Redeploy**, sign in once in the app with that email, then open `/admin`.
 
+The **Station checks** panel needs one more migration,
+`supabase/migrations/20261107190000_station_checks.sql`. It shows Radio Browser's
+total, how many stations Signal Wave has checked, how many passed, and why the
+rest were turned away (each station's latest result).
+
 How it counts: a play is recorded after 30 seconds of listening. Listeners are
 counted per browser with a random ID (no IP addresses or locations), so one
 person on two devices counts twice. The play log can't be read with the public
