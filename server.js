@@ -11,6 +11,8 @@ const routes = {
   '/api/nowplaying': require('./api/nowplaying'),
   '/api/config': require('./api/config'),
   '/api/keepalive': require('./api/keepalive'),
+  '/api/track': require('./api/track'),
+  '/api/admin-stats': require('./api/admin-stats'),
 };
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -21,7 +23,8 @@ const TYPES = {
 http.createServer((req, res) => {
   const { pathname } = new URL(req.url, 'http://localhost');
   if (routes[pathname]) return routes[pathname](req, res);
-  const file = path.normalize(path.join(PUBLIC, pathname === '/' ? 'index.html' : pathname));
+  const page = pathname === '/' ? 'index.html' : pathname === '/admin' ? 'admin.html' : pathname;
+  const file = path.normalize(path.join(PUBLIC, page));
   if (!file.startsWith(PUBLIC)) { res.statusCode = 403; return res.end(); }
   fs.readFile(file, (err, data) => {
     if (err) { res.statusCode = 404; return res.end('Not found'); }

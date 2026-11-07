@@ -51,6 +51,9 @@ around the two handlers.
 | `lib/geo.js` | City lookup via OpenStreetMap Nominatim (rate-limited, cached) |
 | `api/config.js` | Tells the app whether sync is set up (reads Vercel env vars) |
 | `api/keepalive.js` | Daily ping that stops the free Supabase project pausing |
+| `api/track.js` | Records a play after 30 s of listening (server-only key) |
+| `api/admin-stats.js` | Dashboard numbers, for ADMIN_EMAILS only |
+| `public/admin.html`, `admin.js` | The private dashboard page at `/admin` |
 | `supabase/migrations/` | The `user_settings` table and its per-user access rules |
 | `public/vendor/supabase.js` | Supabase browser client 2.118.0 (loaded only when sync is on) |
 | `scripts/test.js` | Offline tests: `npm test` |
@@ -79,6 +82,26 @@ With it, a **Sync across devices** section appears at the bottom of the Saved pa
 Supabase's built-in email sender only allows a few emails per hour. That's
 fine for you and a few friends; for more people, add a custom SMTP sender
 (Authentication → Emails → SMTP settings).
+
+## Private dashboard (/admin)
+
+`your-site/admin` shows listeners, plays, accounts, top stations, countries and
+genres, a 30-day chart and recent plays. Only emails listed in `ADMIN_EMAILS`
+can see it.
+
+1. **Create the play log.** Run `supabase/migrations/20261107180000_plays_and_admin_stats.sql`
+   (automatic with the GitHub integration, or paste it into the SQL Editor).
+2. **Add two more variables in Vercel** (Settings → Environment Variables):
+   - `SUPABASE_SERVICE_ROLE_KEY` = the **secret** key (Supabase → Project Settings →
+     API Keys: `sb_secret_…`, or the legacy `service_role` key). Mark it **Sensitive**.
+     It stays on the server; the app refuses to send a secret key to browsers.
+   - `ADMIN_EMAILS` = the email you sign in with (comma-separate several).
+3. **Redeploy**, sign in once in the app with that email, then open `/admin`.
+
+How it counts: a play is recorded after 30 seconds of listening. Listeners are
+counted per browser with a random ID (no IP addresses or locations), so one
+person on two devices counts twice. The play log can't be read with the public
+key; only the server can read it.
 
 ## Genres
 

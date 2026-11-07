@@ -37,7 +37,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '11'; // shown in the Saved panel, to check which version is running
+  const BUILD = '12'; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
   const RETRY_GAP_MS = 60000; // at most one automatic reconnect per minute before skipping
@@ -135,6 +135,7 @@
     clearStall();
     state.playedOnce = true;
     setLive(true);
+    armPlayRecord();
     const s = state.current;
     if (s) status(`> LINK ESTABLISHED // ${s.bitrate ? `${s.bitrate} kbps ` : ''}${(s.codec || 'stream').toUpperCase()}`);
   }
@@ -236,6 +237,7 @@
     state.titleSince = Date.now();
     state.playedOnce = false;
     state.lastRetry = 0;
+    state.timers.track = null;
 
     renderStation(station);
     flyTo(station);
@@ -268,6 +270,50 @@
   function clearTimers() {
     clearStall();
     clearInterval(state.timers.poll);
+    clearTimeout(state.timers.track);
+  }
+
+  /* ---------- Listening stats ----------
+     Once a station has played for 30 seconds, the app tells the server, which
+     adds a row to the private play log behind the admin dashboard. The only
+     thing identifying the listener is a random ID made up by this browser. */
+  const PLAY_COUNTS_AFTER_MS = 30000;
+  function visitorId() {
+    let id = store.get('sw.visitor', null);
+    if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+      id = (crypto.randomUUID && crypto.randomUUID()) ||
+        '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
+      store.set('sw.visitor', id);
+    }
+    return id;
+  }
+  function armPlayRecord() {
+    const s = state.current;
+    if (!s || state.recorded === s.uuid || state.timers.track) return;
+    state.timers.track = setTimeout(() => {
+      state.timers.track = null;
+      if (state.current !== s || state.paused) return;
+      state.recorded = s.uuid;
+      recordPlay(s);
+    }, PLAY_COUNTS_AFTER_MS);
+  }
+  async function recordPlay(s) {
+    const headers = { 'Content-Type': 'application/json' };
+    try {
+      if (sb && user) {
+        const { data } = await sb.auth.getSession();
+        if (data.session) headers.Authorization = `Bearer ${data.session.access_token}`;
+      }
+      await fetch('/api/track', {
+        method: 'POST',
+        headers,
+        keepalive: true,
+        body: JSON.stringify({
+          visitor: visitorId(),
+          station: { uuid: s.uuid, name: s.name, city: s.city, country: s.country, countryCode: s.countryCode, genre: s.genre },
+        }),
+      });
+    } catch (_) { /* stats are best-effort */ }
   }
 
   async function pollTitle() {
@@ -1024,6 +1070,8 @@
       state.paused = true;
       audio.pause();
       clearStall();
+      clearTimeout(state.timers.track);
+      state.timers.track = null;
       setLive(false);
       status('> LINK PAUSED');
     }
