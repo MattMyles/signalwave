@@ -37,11 +37,10 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '10'; // shown in the Saved panel, to check which version is running
+  const BUILD = '11'; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
-  const MAX_TITLE_MISSES = 3;
-  const FROZEN_TITLE_MS = 15 * 60 * 1000;
+  const RETRY_GAP_MS = 60000; // at most one automatic reconnect per minute before skipping
 
   const state = {
     genre: store.get('sw.genre', 'any'),
@@ -57,7 +56,8 @@
     current: null,
     title: null,
     titleSince: 0,
-    misses: 0,
+    playedOnce: false, // the current station has actually started playing
+    lastRetry: 0,
     switching: false,
     started: false,
     paused: false,
@@ -90,22 +90,50 @@
 
   [plainAudio, corsAudio].forEach((el) => {
     el.addEventListener('playing', () => { if (el === audio) onPlaying(); });
+    // Only "waiting" (playback actually stopped for lack of data) arms the stall
+    // timer. Browsers also fire "stalled" on live streams that are playing fine
+    // from their buffer, which used to skip stations mid-song.
     el.addEventListener('waiting', () => { if (el === audio) armStall(); });
-    el.addEventListener('stalled', () => { if (el === audio) armStall(); });
+    el.addEventListener('timeupdate', () => {
+      if (el === audio && state.timers.stall && el.currentTime > stallAt + 0.5) clearStall();
+    });
     el.addEventListener('error', () => {
-      if (el !== audio || !state.current || !el.src) return;
-      next('> SIGNAL LOST — RETUNING…', true);
+      if (el !== audio || !state.current || !el.getAttribute('src')) return;
+      troubled('> SIGNAL LOST');
     });
   });
 
+  let stallAt = 0;
+  function clearStall() { clearTimeout(state.timers.stall); state.timers.stall = null; }
   function armStall() {
-    clearTimeout(state.timers.stall);
+    clearStall();
     if (state.paused) return;
-    state.timers.stall = setTimeout(() => next('> SIGNAL STALLED — RETUNING…', true), STALL_MS);
+    stallAt = audio.currentTime;
+    state.timers.stall = setTimeout(() => {
+      state.timers.stall = null;
+      if (state.paused || audio.currentTime > stallAt + 0.5) return; // it recovered on its own
+      troubled('> SIGNAL STALLED');
+    }, STALL_MS);
+  }
+
+  // Something went wrong with the stream. A station that never started is
+  // skipped. One that was playing gets one reconnect first, since most drops
+  // are brief network blips (Wi-Fi to cellular, a tunnel, a busy server).
+  function troubled(label) {
+    const s = state.current;
+    if (!s || state.switching) return;
+    if (state.playedOnce && Date.now() - state.lastRetry > RETRY_GAP_MS) {
+      state.lastRetry = Date.now();
+      status(`${label} — RECONNECTING…`, true);
+      setTimeout(() => { if (state.current === s && !state.paused) playUrl(s); }, 1500);
+      return;
+    }
+    next(`${label} — RETUNING…`, true);
   }
 
   function onPlaying() {
-    clearTimeout(state.timers.stall);
+    clearStall();
+    state.playedOnce = true;
     setLive(true);
     const s = state.current;
     if (s) status(`> LINK ESTABLISHED // ${s.bitrate ? `${s.bitrate} kbps ` : ''}${(s.codec || 'stream').toUpperCase()}`);
@@ -129,7 +157,7 @@
       p.catch((e) => {
         if (station !== state.current || el !== audio) return;
         if (e && e.name === 'NotAllowedError') {
-          clearTimeout(state.timers.stall);
+          clearStall();
           state.paused = true; setPlayButton(); setLive(false);
           status('> TAP PLAY TO START AUDIO', true);
         } else if (e && e.name !== 'AbortError') {
@@ -206,7 +234,8 @@
     state.history.push({ uuid: station.uuid, lat: station.lat, lng: station.lng, cc: station.countryCode });
     state.title = station.title || null;
     state.titleSince = Date.now();
-    state.misses = 0;
+    state.playedOnce = false;
+    state.lastRetry = 0;
 
     renderStation(station);
     flyTo(station);
@@ -237,7 +266,7 @@
   }
 
   function clearTimers() {
-    clearTimeout(state.timers.stall);
+    clearStall();
     clearInterval(state.timers.poll);
   }
 
@@ -248,23 +277,15 @@
     try {
       const r = await fetch(`/api/nowplaying?uuid=${encodeURIComponent(s.uuid)}`);
       title = (await r.json()).title || null;
-    } catch (_) { return; } // network blip: don't count it against the station
-    if (s !== state.current) return;
-    if (!title) {
-      state.misses++;
-      if (state.misses >= MAX_TITLE_MISSES) next('> TRACK DATA LOST — RETUNING…', true);
-      return;
-    }
-    state.misses = 0;
-    if (title !== state.title) {
-      state.title = title;
-      state.titleSince = Date.now();
-      setSong(title);
-      updateMediaSession();
-      rememberLastSong(s.uuid, title);
-    } else if (Date.now() - state.titleSince > FROZEN_TITLE_MS) {
-      next('> TRACK DATA FROZEN — RETUNING…', true);
-    }
+    } catch (_) { return; }
+    // A missing title (an ad break, a DJ talking, a slow check) never skips a
+    // station that's playing; the last known song simply stays on screen.
+    if (s !== state.current || !title || title === state.title) return;
+    state.title = title;
+    state.titleSince = Date.now();
+    setSong(title);
+    updateMediaSession();
+    rememberLastSong(s.uuid, title);
   }
 
   /* ---------- HUD ---------- */
@@ -1002,7 +1023,7 @@
     } else {
       state.paused = true;
       audio.pause();
-      clearTimeout(state.timers.stall);
+      clearStall();
       setLive(false);
       status('> LINK PAUSED');
     }

@@ -106,8 +106,9 @@ iMessage caches previews, so a link pasted before an update may keep the old loo
 - HLS (`.m3u8`) streams are skipped, because they don't carry ICY song titles.
 - The song-title endpoint only accepts station IDs, not URLs, and refuses
   private network addresses.
-- If a playing station stops sending titles for 3 checks (~75 s), stalls for
-  8 s, or repeats one title for 15 minutes, the app moves to the next station.
+- A station that never starts within 8 s is skipped. One that was playing and
+  then drops gets one automatic reconnect (at most once a minute) before the
+  app moves on. Missing song titles never skip a station that's playing.
 - "Not music? Hide station" remembers hidden stations in the browser.
 - Before going public, change `USER_AGENT` in `lib/config.js` to include your
   site URL; Nominatim and Radio Browser both ask for an identifying agent.
