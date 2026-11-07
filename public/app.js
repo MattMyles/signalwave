@@ -624,7 +624,7 @@
 
   /* ---------- Favorites ---------- */
   const isFav = (uuid) => state.favorites.some((f) => f.uuid === uuid);
-  function saveFavs() { store.set('sw.favorites', state.favorites); renderFavorites(); updatePoints(); }
+  function saveFavs() { store.set('sw.favorites', state.favorites); renderFavorites(); updatePoints(); markChanged(); }
 
   function toggleFavorite() {
     const s = state.current;
@@ -781,6 +781,7 @@
     renderGenres();
     renderMyGenres();
     syncCatalog();
+    markChanged();
   }
   function toggleGenre(id) {
     state.genres = state.genres.includes(id) ? state.genres.filter((g) => g !== id) : [...state.genres, id];
@@ -919,6 +920,7 @@
     if (!s) return;
     state.hidden = [...new Set([...state.hidden, s.uuid])].slice(-250);
     store.set('sw.hidden', state.hidden);
+    markChanged();
     next('> STATION HIDDEN — RETUNING…');
   });
   document.addEventListener('keydown', (e) => {
@@ -927,6 +929,187 @@
     if (e.key === ' ' && !e.target.closest('button')) { e.preventDefault(); togglePlay(); }
     if (e.key === 'f') toggleFavorite();
     if (e.key === 'Escape') { closeGenreSheet(); closeDrawer(); }
+  });
+
+  /* ---------- Account & sync ----------
+     Sign-in is a one-time code sent by email (a code rather than a link, so it
+     works inside the iPhone home-screen app). Saved stations, the genre list
+     and hidden stations live in one Supabase row per user; row-level security
+     keeps each row private to its owner. */
+  let sb = null;
+  let user = null;
+  let pushTimer = null;
+  let pendingEmail = '';
+
+  function snapshot() {
+    return { favorites: state.favorites, genres: state.genres, hidden: state.hidden };
+  }
+  function markChanged() {
+    store.set('sw.changedAt', Date.now());
+    if (!user) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(push, 1500);
+    setSyncState('SAVING…');
+  }
+  function setSyncState(text) { const el = $('syncState'); if (el) el.textContent = text; }
+
+  function applySettings(row) {
+    state.favorites = Array.isArray(row.favorites) ? row.favorites : [];
+    if (Array.isArray(row.genres)) state.genres = row.genres.filter((g) => typeof g === 'string');
+    state.hidden = Array.isArray(row.hidden) ? row.hidden : [];
+    store.set('sw.favorites', state.favorites);
+    store.set('sw.genres', state.genres);
+    store.set('sw.hidden', state.hidden);
+    if (state.genre !== 'any' && !state.genres.includes(state.genre)) { state.genre = 'any'; store.set('sw.genre', 'any'); state.queue = []; }
+    renderFavorites(); updatePoints(); setFavButton();
+    renderGenres(); renderMyGenres(); syncCatalog();
+  }
+
+  // First sign-in on a device: keep everything from both sides.
+  function mergeSettings(remote) {
+    const byId = new Map();
+    for (const f of [...(remote.favorites || []), ...state.favorites]) if (f && f.uuid && !byId.has(f.uuid)) byId.set(f.uuid, f);
+    return {
+      favorites: [...byId.values()],
+      genres: Array.isArray(remote.genres) ? [...new Set([...remote.genres, ...state.genres])] : state.genres,
+      hidden: [...new Set([...(remote.hidden || []), ...state.hidden])].slice(-250),
+    };
+  }
+
+  async function push() {
+    if (!sb || !user) return;
+    clearTimeout(pushTimer);
+    pushTimer = null;
+    const { error } = await sb.from('user_settings').upsert({ user_id: user.id, ...snapshot(), updated_at: new Date().toISOString() });
+    if (error) { setSyncState('NOT SAVED — WILL RETRY'); pushTimer = setTimeout(push, 15000); return; }
+    store.set('sw.syncedAt', Date.now());
+    setSyncState('SYNCED');
+  }
+
+  async function pull() {
+    if (!sb || !user) return;
+    setSyncState('SYNCING…');
+    const { data, error } = await sb.from('user_settings').select('favorites, genres, hidden, updated_at').eq('user_id', user.id).maybeSingle();
+    if (error) { setSyncState('OFFLINE — WILL RETRY'); return; }
+    const firstOnDevice = store.get('sw.syncUser', null) !== user.id;
+    const localEdits = store.get('sw.changedAt', 0) > store.get('sw.syncedAt', 0);
+    if (!data) {
+      await push();
+    } else if (firstOnDevice) {
+      applySettings(mergeSettings(data));
+      await push();
+      toast('> SIGNALS SYNCED');
+    } else if (localEdits) {
+      await push(); // changes made here while offline win
+    } else {
+      applySettings(data);
+      store.set('sw.syncedAt', Date.now());
+      setSyncState('SYNCED');
+    }
+    store.set('sw.syncUser', user.id);
+  }
+
+  function renderAccount() {
+    $('signedIn').hidden = !user;
+    $('signedOut').hidden = !!user;
+    if (user) $('userEmail').textContent = user.email || 'your account';
+  }
+
+  function setUser(u) {
+    const changed = (u && u.id) !== (user && user.id);
+    user = u || null;
+    renderAccount();
+    if (user && changed) pull();
+  }
+
+  async function initSync() {
+    let cfg;
+    try { cfg = await (await fetch('/api/config')).json(); } catch (_) { return; }
+    if (!cfg || !cfg.sync) return; // sync not set up on this deployment
+    await new Promise((resolve, reject) => {
+      const sc = document.createElement('script');
+      sc.src = 'vendor/supabase.js';
+      sc.onload = resolve; sc.onerror = reject;
+      document.head.appendChild(sc);
+    }).catch(() => null);
+    if (!window.supabase || !window.supabase.createClient) return;
+    sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'sw.auth' },
+    });
+    $('account').hidden = false;
+    const { data } = await sb.auth.getSession();
+    setUser(data.session && data.session.user);
+    sb.auth.onAuthStateChange((_event, session) => setUser(session && session.user));
+    // Pick up changes made on another device when the app comes back to the front.
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && user && !pushTimer) pull(); });
+  }
+
+  function authMsg(text, warn = false) {
+    const el = $('authMsg');
+    el.textContent = text;
+    el.classList.toggle('warn', warn);
+  }
+
+  $('emailForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!sb) return;
+    pendingEmail = $('email').value.trim();
+    const btn = e.submitter || $('emailForm').querySelector('button');
+    btn.disabled = true;
+    const { error } = await sb.auth.signInWithOtp({ email: pendingEmail, options: { shouldCreateUser: true, emailRedirectTo: location.origin } });
+    btn.disabled = false;
+    if (error) return authMsg(/rate|seconds/i.test(error.message) ? 'Too many codes requested. Wait a minute and try again.' : `Couldn't send the code: ${error.message}`, true);
+    $('emailForm').hidden = true;
+    $('codeForm').hidden = false;
+    $('code').value = '';
+    $('code').focus();
+    authMsg(`Code sent to ${pendingEmail}. Check your inbox (and spam) and enter it here.`);
+  });
+
+  $('codeForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!sb) return;
+    const btn = e.submitter || $('codeForm').querySelector('button[type="submit"]');
+    btn.disabled = true;
+    const { error } = await sb.auth.verifyOtp({ email: pendingEmail, token: $('code').value.trim(), type: 'email' });
+    btn.disabled = false;
+    if (error) return authMsg('That code didn\'t work. Check it, or send a new one.', true);
+    $('codeForm').hidden = true;
+    $('emailForm').hidden = false;
+    authMsg('Signed in.');
+  });
+
+  $('changeEmail').addEventListener('click', () => {
+    $('codeForm').hidden = true;
+    $('emailForm').hidden = false;
+    authMsg('Enter the email to send a code to.');
+  });
+
+  $('signOut').addEventListener('click', async () => {
+    if (pushTimer) await push();
+    await sb.auth.signOut();
+    store.set('sw.syncUser', null);
+    authMsg('Signed out. Your saved stations stay on this device.');
+  });
+
+  // Two taps to delete, so a stray tap can't wipe anything.
+  let deleteArmed = null;
+  $('deleteData').addEventListener('click', async () => {
+    const btn = $('deleteData');
+    if (!deleteArmed) {
+      btn.textContent = 'TAP AGAIN TO DELETE';
+      btn.classList.add('armed');
+      deleteArmed = setTimeout(() => { deleteArmed = null; btn.textContent = 'DELETE SYNCED DATA'; btn.classList.remove('armed'); }, 4000);
+      return;
+    }
+    clearTimeout(deleteArmed); deleteArmed = null;
+    btn.textContent = 'DELETE SYNCED DATA'; btn.classList.remove('armed');
+    const { error } = await sb.from('user_settings').delete().eq('user_id', user.id);
+    if (error) return toast('> DELETE FAILED — TRY AGAIN');
+    clearTimeout(pushTimer); pushTimer = null;
+    await sb.auth.signOut();
+    store.set('sw.syncUser', null);
+    authMsg('Your synced data was deleted and you are signed out. This device keeps its own copy.');
   });
 
   /* ---------- Boot ---------- */
@@ -943,6 +1126,7 @@
     updatePoints();
   });
   fillQueue(); // start vetting while the boot screen is up
+  initSync();
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }

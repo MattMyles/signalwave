@@ -2,5 +2,8 @@
   "functions": {
     "api/next.js": { "maxDuration": 45 },
     "api/nowplaying.js": { "maxDuration": 15 }
-  }
+  },
+  "crons": [
+    { "path": "/api/keepalive", "schedule": "17 14 * * *" }
+  ]
 }

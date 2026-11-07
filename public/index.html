@@ -79,6 +79,29 @@
       <label class="btn-ghost" for="importFile">IMPORT</label>
       <input type="file" id="importFile" accept="application/json,.json" hidden>
     </div>
+
+    <section class="account" id="account" hidden>
+      <div class="label">SYNC ACROSS DEVICES</div>
+      <div id="signedOut">
+        <form class="authform" id="emailForm">
+          <input type="email" id="email" placeholder="you@example.com" autocomplete="email" required aria-label="Email address">
+          <button class="btn-ghost" type="submit">SEND CODE</button>
+        </form>
+        <form class="authform" id="codeForm" hidden>
+          <input id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" maxlength="10" placeholder="Code from email" required aria-label="Sign-in code">
+          <button class="btn-ghost go" type="submit">SIGN IN</button>
+          <button class="linkish" type="button" id="changeEmail">Use a different email</button>
+        </form>
+        <p class="hint" id="authMsg">Sign in to keep your saved stations, genres and hidden stations on every device. You'll get a one-time code by email, no password.</p>
+      </div>
+      <div id="signedIn" hidden>
+        <p class="hint">Synced as <b id="userEmail"></b> · <span class="mono" id="syncState">…</span></p>
+        <div class="drawer-foot">
+          <button class="btn-ghost" id="signOut">SIGN OUT</button>
+          <button class="btn-ghost danger" id="deleteData">DELETE SYNCED DATA</button>
+        </div>
+      </div>
+    </section>
   </aside>
 
   <div class="sheet-backdrop" id="genreSheet" hidden>

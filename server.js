@@ -6,7 +6,12 @@ const path = require('path');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, 'public');
-const routes = { '/api/next': require('./api/next'), '/api/nowplaying': require('./api/nowplaying') };
+const routes = {
+  '/api/next': require('./api/next'),
+  '/api/nowplaying': require('./api/nowplaying'),
+  '/api/config': require('./api/config'),
+  '/api/keepalive': require('./api/keepalive'),
+};
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.geojson': 'application/json', '.webmanifest': 'application/manifest+json',

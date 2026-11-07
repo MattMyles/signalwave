@@ -49,7 +49,36 @@ around the two handlers.
 | `lib/icy.js` | Reads ICY song titles from streams (handles old SHOUTcast servers) |
 | `lib/radio.js` | Radio Browser API client with mirror failover |
 | `lib/geo.js` | City lookup via OpenStreetMap Nominatim (rate-limited, cached) |
+| `api/config.js` | Tells the app whether sync is set up (reads Vercel env vars) |
+| `api/keepalive.js` | Daily ping that stops the free Supabase project pausing |
+| `supabase/migrations/` | The `user_settings` table and its per-user access rules |
+| `public/vendor/supabase.js` | Supabase browser client 2.118.0 (loaded only when sync is on) |
 | `scripts/test.js` | Offline tests: `npm test` |
+
+## Sign-in and sync (optional, Supabase)
+
+Without this setup the app works the same, with everything saved on each device only.
+With it, a **Sync across devices** section appears at the bottom of the Saved panel.
+
+1. **Create the table.** If the Supabase GitHub integration deploys migrations,
+   `supabase/migrations/…_user_settings.sql` is applied when you push to the
+   production branch. Otherwise open Supabase → SQL Editor, paste that file, and run it.
+2. **Put the code in the sign-in email.** Supabase → Authentication → Emails →
+   *Magic Link* template. Add the code, for example:
+   `<p>Your Signal Wave code: <strong>{{ .Token }}</strong></p>`
+   (A code works inside the iPhone home-screen app; a link would open Safari instead.)
+3. **Set the site address.** Authentication → URL Configuration → Site URL =
+   your Vercel address.
+4. **Give Vercel the keys.** Vercel → Settings → Environment Variables:
+   - `SUPABASE_URL` = Project URL (Supabase → Project Settings → API)
+   - `SUPABASE_ANON_KEY` = the **anon / publishable** key
+   Never use the `service_role` / secret key here. Redeploy afterwards.
+5. **Keep-alive.** `vercel.json` runs `/api/keepalive` once a day so the free
+   Supabase project never pauses for inactivity.
+
+Supabase's built-in email sender only allows a few emails per hour. That's
+fine for you and a few friends; for more people, add a custom SMTP sender
+(Authentication → Emails → SMTP settings).
 
 ## Genres
 
