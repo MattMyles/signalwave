@@ -134,6 +134,19 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 }
 .song.glitch span { animation: glitch 0.32s steps(2) 1; }
 
+.songlinks { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.songlinks .label { margin: 0 2px 0 0; font-size: 9px; }
+.songlink {
+  --brand: var(--cyan);
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.14em; text-decoration: none;
+  color: var(--brand); border: 1px solid var(--brand); padding: 3px 8px; min-height: 22px;
+  display: inline-flex; align-items: center;
+  clip-path: polygon(0 0, calc(100% - 5px) 0, 100% 5px, 100% 100%, 5px 100%, 0 calc(100% - 5px));
+}
+#spotifyLink { --brand: #1db954; }
+#appleLink { --brand: #fa243c; }
+.songlink:hover, .songlink:focus-visible { color: #000; background: var(--brand); }
+.songlink[aria-disabled='true'] { opacity: 0.35; pointer-events: none; }
 .meta { margin: 12px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
 .meta div { min-width: 0; }
 .meta dd {

@@ -8,6 +8,11 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* storage blocked */ } },
   };
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Every iPhone/iPad browser runs on WebKit, whose Web Audio support for live
+  // streams is unreliable (silent analyser, or audio muted when the audio
+  // context starts outside a tap). On those devices, play streams directly.
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const narrow = matchMedia('(max-width: 899px)');
 
   const GENRES = [
@@ -88,7 +93,8 @@
   // Starts playback without waiting for the stream to buffer, so a slow stream
   // can't freeze the controls; the stall timer and error events handle failures.
   function playUrl(station) {
-    const useCors = Boolean(station.cors) && !!(window.AudioContext || window.webkitAudioContext);
+    const useCors = Boolean(station.cors) && !isIOS && !!(window.AudioContext || window.webkitAudioContext);
+    silentFrames = 0;
     const el = useCors ? corsAudio : plainAudio;
     [plainAudio, corsAudio].forEach((a) => { if (a !== el) { a.pause(); a.removeAttribute('src'); a.load(); } });
     audio = el;
@@ -265,10 +271,38 @@
     const box = $('song');
     const span = $('songText');
     span.textContent = title || '// NO TRACK DATA';
+    setSongLinks(title);
     box.classList.remove('glitch');
     void box.offsetWidth; // restart the animation
     box.classList.add('glitch');
     requestAnimationFrame(() => fitScroll(span));
+  }
+
+  // Turns "Artist - Title [Radio Edit] ★ www.station.fm" into a clean search query.
+  function songQuery(title) {
+    if (!title) return '';
+    return title
+      .replace(/\[[^\]]*\]/g, ' ')
+      .replace(/\((?:[^)]*\b(?:edit|mix|version|remaster(?:ed)?|live|explicit|clean)\b[^)]*)\)/gi, ' ')
+      .replace(/\b(?:https?:\/\/|www\.)\S+/gi, ' ')
+      .replace(/^(?:now playing|on air|playing)\s*[:\-–]\s*/i, '')
+      .replace(/[★*|•]+/g, ' ')
+      .replace(/\s+[-–—]\s+/, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // Search links; on an iPhone with the apps installed these open Spotify or Apple Music directly.
+  function setSongLinks(title) {
+    const q = songQuery(title);
+    const links = [
+      [$('spotifyLink'), q && `https://open.spotify.com/search/${encodeURIComponent(q)}`],
+      [$('appleLink'), q && `https://music.apple.com/us/search?term=${encodeURIComponent(q)}`],
+    ];
+    for (const [a, href] of links) {
+      if (href) { a.href = href; a.removeAttribute('aria-disabled'); a.tabIndex = 0; }
+      else { a.removeAttribute('href'); a.setAttribute('aria-disabled', 'true'); a.tabIndex = -1; }
+    }
   }
 
   function renderStation(s) {
@@ -323,6 +357,7 @@
   const viz = $('viz');
   const vctx = viz.getContext('2d');
   let vizData = null;
+  let silentFrames = 0; // frames in a row where the analyser returned nothing
   function drawViz(t) {
     const dpr = Math.min(devicePixelRatio || 1, 2);
     const w = viz.clientWidth, h = viz.clientHeight;
@@ -338,10 +373,13 @@
     vizGrad.addColorStop(0.4, '#b84dff');
     vizGrad.addColorStop(0.75, '#ff3ec8');
     const live = state.current && !state.paused && !audio.paused;
-    const real = live && analyser && audio === corsAudio;
+    let real = live && analyser && audio === corsAudio;
     if (real) {
       if (!vizData) vizData = new Uint8Array(analyser.frequencyBinCount);
       analyser.getByteFrequencyData(vizData);
+      // If the browser hands back silence for ~1.5 s, switch to the animated bars.
+      silentFrames = vizData.some((v) => v > 0) ? 0 : silentFrames + 1;
+      if (silentFrames > 90) real = false;
     }
     for (let i = 0; i < n; i++) {
       let v;
