@@ -158,7 +158,7 @@ button:focus-visible, label:focus-visible, input:focus-visible {
   border: 1px solid var(--cyan);
   clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
   box-shadow: inset 0 0 24px rgba(0, 240, 255, 0.08);
-  backdrop-filter: blur(4.8px); -webkit-backdrop-filter: blur(4.8px);
+  backdrop-filter: blur(1.2px); -webkit-backdrop-filter: blur(1.2px);
 }
 .panel::before { /* neon edge along the cut corner */
   content: ''; position: absolute; top: 0; right: 0; width: calc(var(--cut) * 1.42); height: 1px;
