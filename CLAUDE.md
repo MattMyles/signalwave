@@ -6,7 +6,7 @@ Random live music radio from a random city on Earth, played over a neon cyberpun
 
 - **Pushing to `main` deploys the live site.** Matt has asked for changes to go straight to `main` once tested; for anything risky or large, push a branch first (Vercel builds a preview) and ask.
 - **Test before pushing:** `npm test` (offline tests) and a Playwright check at iPhone width (390×844). `node server.js` serves the site and `/api/*` locally (`PORT=3123 node server.js`). The sandbox usually can't reach Radio Browser, so real stations won't load locally; the Easter egg (below) is a handy way to get audio playing for UI tests.
-- **After any change in `public/`, bump the cache name in `public/sw.js`** (`signal-wave-vNN` → next number) so installed copies update. If you add a new front-end file, add it to `SHELL` there too.
+- **After any change in `public/`, bump the cache name in `public/sw.js`** (`signal-wave-vNN` → next number) so installed copies update, **and bump `BUILD` near the top of `public/app.js`** (shown as "BUILD NN" at the bottom of the Saved panel; Matt uses it to check his phone has the update). If you add a new front-end file, add it to `SHELL` in `sw.js` too.
 - Phone first: everything must work at 390px wide, with safe-area insets, and on iPhone Safari (no Web Audio analyser on streams, no element full screen). Respect `prefers-reduced-motion`.
 - No build step and no npm dependencies: plain HTML/CSS/JS. Vendor libraries are bundled in `public/vendor/` (no CDNs).
 - Visual style: black background, neon yellow `#fcee0a`, cyan `#00f0ff`, magenta `#ff2a6d` / pink `#ff3ec8`, green `#39ff14`; Chakra Petch display font, Share Tech Mono for HUD text; terminal-style status messages like `> LINK ESTABLISHED`. CSS tokens live at the top of `styles.css`.
@@ -72,7 +72,7 @@ Supabase tables (`supabase/migrations/`): `user_settings` (per-user, row-level s
 - Random vetted music station worldwide, globe flies to its city with an arc from the last one; NEXT/PREV, two stations always queued.
 - Now playing with song titles, station/genre/city/country, bitrate, visualizer, Spotify and Apple Music search links, lock-screen controls.
 - Genre chips, mix up to 5; editable list with sub-genres; dead genres flagged.
-- Saved stations (♥), shown on the globe; share by link; export/import; "Not music? Hide station".
+- Saved stations (♥), shown on the globe; share by link; "Not music? Hide station". EXPORT / IMPORT sit right under the saved list (above "Add a shared station"); EXPORT turns the list into a checklist (tap rows, SELECT ALL / NONE, EXPORT N, CANCEL) and downloads only the picked stations in the usual file format.
 - Optional sign-in and sync across devices; private admin dashboard with plays, listeners, top stations/countries/genres, station-check stats.
 - Installable PWA with icons and link-preview image.
 - **Vibe mode** (button under the reticle, or `V`): hides the HUD; globe zooms out to fill the screen with a tiny ◂ ▸ bar. `vibes.js` draws warp stars, ship squadrons that fire on the beat and aim at asteroids, asteroids that explode (big ones split), soft beat rings once a bar, and a friendly UFO that lowers a disco ball throwing light spots (lines like "> TAKE ME TO YOUR DJ"; nothing abduction-themed). Matt asked for it calm, not busy: keep spawn rates low. Real beat sync only on streams with CORS on desktop; iPhone uses a genre-tempo fake beat. Full screen via the Fullscreen API (webkit fallback); iPhone Safari can't, the home-screen app fills the screen.
@@ -106,6 +106,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Vibe mode: full-screen globe with music-reactive effects; UFO changed from tractor beam to disco ball (abduction felt threatening); genre-matched fake beat; exploding asteroids; then toned down (fewer rings and objects) because it was too busy.
 - Renamed on screen to **Signal Wave ER** after finding Signal Wave Radio (UK). Rename plan added in `docs/RENAMING.md`.
 - **2026-11-08** This guide and the `/signalwave` and `/signalwave-rename` skills.
+- Export moved under the saved list; pick which stations to export, or all (build 16).
 
 Add a line here when shipping something notable.
 

@@ -104,6 +104,19 @@
     <label class="toggle"><input type="checkbox" id="showFavDots" checked> Show on globe</label>
     <ul class="favlist" id="favList"></ul>
     <p class="empty" id="favEmpty">No saved stations yet. Tap ♥ while a station plays to keep it here.</p>
+    <div class="drawer-foot" id="favTools">
+      <button class="btn-ghost" id="exportFavs">EXPORT</button>
+      <label class="btn-ghost" for="importFile">IMPORT</label>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
+    <div class="exportbar" id="exportBar" hidden>
+      <p class="hint mono" id="exportHint">&gt; SELECT SIGNALS TO EXPORT</p>
+      <div class="drawer-foot">
+        <button class="btn-ghost" id="exportAll">SELECT ALL</button>
+        <button class="btn-ghost go" id="exportGo" disabled>EXPORT 0</button>
+        <button class="btn-ghost" id="exportCancel">CANCEL</button>
+      </div>
+    </div>
     <div class="add-shared">
       <div class="label">ADD A SHARED STATION</div>
       <form class="authform" id="addForm">
@@ -111,11 +124,6 @@
         <button class="btn-ghost" type="submit">ADD</button>
       </form>
       <p class="hint" id="addMsg" hidden></p>
-    </div>
-    <div class="drawer-foot">
-      <button class="btn-ghost" id="exportFavs">EXPORT</button>
-      <label class="btn-ghost" for="importFile">IMPORT</label>
-      <input type="file" id="importFile" accept="application/json,.json" hidden>
     </div>
 
     <section class="account" id="account" hidden>

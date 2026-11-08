@@ -37,7 +37,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '15';
+  const BUILD = '16';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -952,6 +952,7 @@
   }
 
   /* ---------- Favorites ---------- */
+  let exportSel = null; // export picker: Set of station ids being picked, otherwise null
   const isFav = (uuid) => state.favorites.some((f) => f.uuid === uuid);
   function saveFavs() { store.set('sw.favorites', state.favorites); renderFavorites(); updatePoints(); markChanged(); }
 
@@ -994,9 +995,28 @@
     $('favEmpty').hidden = state.favorites.length > 0;
     const list = $('favList');
     list.innerHTML = '';
+    list.classList.toggle('selecting', Boolean(exportSel));
+    $('exportFavs').disabled = !state.favorites.length;
     for (const f of state.favorites) {
       const li = document.createElement('li');
       if (state.current && state.current.uuid === f.uuid) li.className = 'playing';
+      if (exportSel) {
+        // Export picker: the whole row toggles the station in or out of the export.
+        const on = exportSel.has(f.uuid);
+        li.classList.toggle('picked', on);
+        li.dataset.pick = f.uuid;
+        li.innerHTML = `
+        ${f.favicon ? `<img src="${esc(f.favicon)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="noicon">FM</span>'}
+        <span class="info">
+          <span class="name"><span class="scroll">${esc(f.name)}</span></span>
+          <span class="where"><span class="scroll">${flag(f.countryCode)} ${esc(f.city)}, ${esc(f.country)}</span></span>
+        </span>
+        <button class="pick" role="checkbox" aria-checked="${on}" aria-label="Export ${esc(f.name)}">${on ? '✓' : ''}</button>`;
+        const pimg = li.querySelector('img');
+        if (pimg) pimg.onerror = () => pimg.replaceWith(Object.assign(document.createElement('span'), { className: 'noicon', textContent: 'FM' }));
+        list.appendChild(li);
+        continue;
+      }
       li.innerHTML = `
         ${f.favicon ? `<img src="${esc(f.favicon)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="noicon">FM</span>'}
         <button class="info" data-play="${esc(f.uuid)}" aria-label="Play ${esc(f.name)}">
@@ -1016,6 +1036,14 @@
   }
 
   $('favList').addEventListener('click', (e) => {
+    const pick = exportSel && e.target.closest('[data-pick]');
+    if (pick) {
+      const id = pick.dataset.pick;
+      if (exportSel.has(id)) exportSel.delete(id); else exportSel.add(id);
+      renderFavorites(); updateExportBar();
+      return;
+    }
+    if (exportSel) return;
     const play = e.target.closest('[data-play]');
     const del = e.target.closest('[data-del]');
     const share = e.target.closest('[data-share]');
@@ -1188,13 +1216,47 @@
   }
 
   function openDrawer() { $('drawer').hidden = false; $('openFavs').setAttribute('aria-expanded', 'true'); refitAll(); }
-  function closeDrawer() { $('drawer').hidden = true; $('openFavs').setAttribute('aria-expanded', 'false'); }
+  function closeDrawer() {
+    $('drawer').hidden = true; $('openFavs').setAttribute('aria-expanded', 'false');
+    if (exportSel) setExportMode(false); // closing the panel cancels a half-made export
+  }
 
-  $('exportFavs').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify({ app: 'signal-wave', version: 1, favorites: state.favorites }, null, 2)], { type: 'application/json' });
+  /* Export: EXPORT turns the saved list into a checklist; pick some stations
+     or SELECT ALL, then export just those. The file format is unchanged. */
+  function setExportMode(on) {
+    exportSel = on ? new Set() : null;
+    $('favTools').hidden = on;
+    $('exportBar').hidden = !on;
+    renderFavorites();
+    updateExportBar();
+  }
+  function updateExportBar() {
+    if (!exportSel) return;
+    const n = exportSel.size, total = state.favorites.length;
+    $('exportGo').textContent = `EXPORT ${n}`;
+    $('exportGo').disabled = n === 0;
+    $('exportAll').textContent = n === total && total ? 'SELECT NONE' : 'SELECT ALL';
+    $('exportHint').textContent = n ? `> ${n} OF ${total} SIGNAL${total === 1 ? '' : 'S'} SELECTED` : '> SELECT SIGNALS TO EXPORT';
+  }
+  function downloadFavorites(list) {
+    const blob = new Blob([JSON.stringify({ app: 'signal-wave', version: 1, favorites: list }, null, 2)], { type: 'application/json' });
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'signal-wave-favorites.json' });
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  $('exportFavs').addEventListener('click', () => { if (state.favorites.length) setExportMode(true); });
+  $('exportCancel').addEventListener('click', () => setExportMode(false));
+  $('exportAll').addEventListener('click', () => {
+    const all = exportSel.size === state.favorites.length;
+    exportSel = new Set(all ? [] : state.favorites.map((f) => f.uuid));
+    renderFavorites(); updateExportBar();
+  });
+  $('exportGo').addEventListener('click', () => {
+    const picked = state.favorites.filter((f) => exportSel.has(f.uuid));
+    if (!picked.length) return;
+    downloadFavorites(picked);
+    toast(`> EXPORTED ${picked.length} SIGNAL${picked.length === 1 ? '' : 'S'}`);
+    setExportMode(false);
   });
   $('importFile').addEventListener('change', async (e) => {
     const file = e.target.files[0];

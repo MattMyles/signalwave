@@ -323,7 +323,18 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 .favlist .share:hover { color: var(--yellow); }
 .add-shared { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
 .empty { color: var(--dim); font-size: 13px; margin: 0; }
-.drawer-foot { display: flex; gap: 10px; }
+.drawer-foot { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn-ghost:disabled { opacity: 0.4; cursor: default; }
+/* Export picker: rows become checkboxes */
+.exportbar { display: flex; flex-direction: column; gap: 8px; }
+.exportbar .hint { margin: 0; color: var(--yellow); font-size: 12px; }
+.favlist.selecting li { grid-template-columns: 36px 1fr 28px; cursor: pointer; }
+.favlist.selecting li.picked { border-color: var(--yellow); background: rgba(252, 238, 10, 0.06); }
+.favlist .pick {
+  width: 24px; height: 24px; border: 1px solid var(--cyan); display: grid; place-items: center;
+  color: #000; font-size: 15px; font-weight: 700; background: none; padding: 0;
+}
+.favlist li.picked .pick { background: var(--yellow); border-color: var(--yellow); }
 
 /* Account / sync (inside the saved drawer) */
 .account { border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
