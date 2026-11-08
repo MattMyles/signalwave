@@ -15,7 +15,7 @@
   let running = false, raf = 0, last = 0;
   let levels = () => ({ bass: 0, energy: 0, beat: false });
   let stars = [], ships = [], rocks = [], bolts = [], rings = [], debris = [], flashes = [], ufo = null, texts = [];
-  let nextShip = 0, nextRock = 0, nextUfo = 0, pulse = 0;
+  let nextShip = 0, nextRock = 0, nextUfo = 0, pulse = 0, beats = 0, lastRing = 0;
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -118,7 +118,9 @@
     if (lv.beat) {
       pulse = 1;
       if (ufo) ufo.spots.forEach((p) => { if (Math.random() < 0.5) p.c = pick(NEON); });
-      if (rings.length < 4) rings.push({ r: Math.min(w, h) * 0.28, a: 0.55 });
+      // A soft ring once a bar (every 4th beat), never more than one every 1.6 s.
+      beats++;
+      if (beats % 4 === 1 && now - lastRing > 1600 && rings.length < 2) { rings.push({ r: Math.min(w, h) * 0.3, a: 0.28 }); lastRing = now; }
       if (ufo) ufo.lights = 1;
       // Ships on screen fire on the beat, aiming at a nearby asteroid when there is one.
       ships.forEach((s) => {
@@ -150,7 +152,7 @@
     const cx = w / 2, cy = h / 2;
 
     // Stars: warp speed rises with the music.
-    const warp = 18 + lv.energy * 90 + pulse * 140;
+    const warp = 18 + lv.energy * 90 + pulse * 60;
     for (let i = 0; i < stars.length; i++) {
       const s = stars[i];
       const prevD = s.d;
@@ -167,10 +169,10 @@
     // Beat rings around the globe.
     for (let i = rings.length - 1; i >= 0; i--) {
       const r = rings[i];
-      r.r += dt * 260; r.a -= dt * 0.7;
+      r.r += dt * 120; r.a -= dt * 0.16;
       if (r.a <= 0) { rings.splice(i, 1); continue; }
       ctx.globalAlpha = r.a;
-      ctx.strokeStyle = '#ff3ec8'; ctx.lineWidth = 2;
+      ctx.strokeStyle = '#ff3ec8'; ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.arc(cx, cy, r.r, 0, TAU); ctx.stroke();
     }
 
