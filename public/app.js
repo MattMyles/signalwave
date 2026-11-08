@@ -37,7 +37,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '21';
+  const BUILD = '22';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -1082,7 +1082,13 @@
     return ok;
   }
 
-  async function shareStation(f) {
+  // NESE members get the transmit sheet (send to a member's ID, or copy the link);
+  // everyone else copies the link straight away.
+  function shareStation(f) {
+    if (nese && nese.id) return openSendSheet(f);
+    return copyStationLink(f);
+  }
+  async function copyStationLink(f) {
     const url = stationLink(f.uuid);
     const text = `Listen to ${f.name} from ${f.city} on Neo Earth Radio`;
     const canShare = typeof navigator.share === 'function';
@@ -1215,7 +1221,10 @@
     pollTitle();
   }
 
-  function openDrawer() { $('drawer').hidden = false; $('openFavs').setAttribute('aria-expanded', 'true'); refitAll(); }
+  function openDrawer() {
+    $('drawer').hidden = false; $('openFavs').setAttribute('aria-expanded', 'true'); refitAll();
+    if (user) loadNese(); // check for new transmissions
+  }
   function closeDrawer() {
     $('drawer').hidden = true; $('openFavs').setAttribute('aria-expanded', 'false');
     if (exportSel) setExportMode(false); // closing the panel cancels a half-made export
@@ -1516,7 +1525,7 @@
     if (e.key === ' ' && !e.target.closest('button')) { e.preventDefault(); togglePlay(); }
     if (e.key === 'f') toggleFavorite();
     if (e.key === 'v') setVibe(!inVibe());
-    if (e.key === 'Escape') { closeGenreSheet(); closeDrawer(); if (inVibe()) setVibe(false); }
+    if (e.key === 'Escape') { closeGenreSheet(); closeSendSheet(); closeDrawer(); if (inVibe()) setVibe(false); }
   });
 
   /* ---------- Account & sync ----------
@@ -1608,7 +1617,8 @@
     const changed = (u && u.id) !== (user && user.id);
     user = u || null;
     renderAccount();
-    if (user && changed) pull();
+    if (changed) { nese = null; renderNese(); }
+    if (user && changed) { pull(); loadNese(); }
   }
 
   async function initSync() {
@@ -1630,7 +1640,11 @@
     setUser(data.session && data.session.user);
     sb.auth.onAuthStateChange((_event, session) => setUser(session && session.user));
     // Pick up changes made on another device when the app comes back to the front.
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && user && !pushTimer) pull(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden || !user) return;
+      if (!pushTimer) pull();
+      loadNese();
+    });
   }
 
   function authMsg(text, warn = false) {
@@ -1699,6 +1713,128 @@
     await sb.auth.signOut();
     store.set('sw.syncUser', null);
     authMsg('Your synced data was deleted and you are signed out. This device keeps its own copy.');
+  });
+
+  /* ---------- NESE membership ----------
+     Signed-in users are members of the NESE (Neo//Earth Signal Engineers
+     Corps, see docs/LORE.md) with an ID like NESE-0007. The Saved panel becomes
+     the NESE Dashboard with an ID badge; members can transmit a station to
+     another member's ID, which waits in their Incoming Transmissions until they
+     add or dismiss it. Everything goes through /api/nese; if that isn't set up,
+     members just see the normal Saved panel. */
+  let nese = null; // { id, number, inbox } while signed in and set up
+  let sendFor = null; // station being transmitted
+
+  async function neseCall(method, body) {
+    if (!sb || !user) return null;
+    const { data } = await sb.auth.getSession();
+    const token = data.session && data.session.access_token;
+    if (!token) return null;
+    const r = await fetch('/api/nese', {
+      method,
+      headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const j = await r.json().catch(() => ({}));
+    return { ok: r.ok, ...j };
+  }
+
+  let neseLoading = null;
+  function loadNese() {
+    if (!user) { nese = null; renderNese(); return Promise.resolve(); }
+    if (neseLoading) return neseLoading;
+    const before = nese ? nese.inbox.length : -1;
+    neseLoading = neseCall('GET').then((j) => {
+      if (!user) return;
+      if (j && j.ok && j.id) {
+        nese = { id: j.id, number: j.number, inbox: Array.isArray(j.inbox) ? j.inbox : [] };
+        if (before >= 0 && nese.inbox.length > before && $('drawer').hidden) {
+          const n = nese.inbox.length;
+          toast(`> ${n} INCOMING TRANSMISSION${n === 1 ? '' : 'S'}`, { label: 'OPEN', fn: openDrawer });
+        }
+      } else {
+        nese = null; // not set up, or signed out elsewhere: show the plain Saved panel
+      }
+      renderNese();
+    }).catch(() => {}).finally(() => { neseLoading = null; });
+    return neseLoading;
+  }
+
+  function renderNese() {
+    const member = Boolean(user && nese && nese.id);
+    $('favLabel').textContent = member ? 'NESE' : 'SAVED';
+    $('drawerTitle').textContent = member ? 'NESE DASHBOARD' : 'SAVED SIGNALS';
+    $('drawer').setAttribute('aria-label', member ? 'NESE Dashboard' : 'Saved stations');
+    $('neseBadge').hidden = !member;
+    if (member) $('neseId').textContent = nese.id;
+    const inbox = member ? nese.inbox : [];
+    $('incoming').hidden = !inbox.length;
+    $('inboxDot').hidden = !inbox.length;
+    const list = $('inboxList');
+    list.innerHTML = '';
+    for (const s of inbox) {
+      const li = document.createElement('li');
+      li.className = 'signal';
+      li.innerHTML = `
+        <span class="info">
+          <span class="from">FROM ${esc(s.from)}</span>
+          <span class="name"><span class="scroll">${esc(s.name || 'Unknown signal')}</span></span>
+          ${s.place ? `<span class="where"><span class="scroll">${esc(s.place)}</span></span>` : ''}
+        </span>
+        <button class="take" data-take="${esc(s.id)}" aria-label="Add ${esc(s.name || 'this station')} to saved">ADD</button>
+        <button class="del" data-drop="${esc(s.id)}" aria-label="Dismiss">✕</button>`;
+      list.appendChild(li);
+    }
+    if (!$('drawer').hidden) refitAll();
+  }
+
+  $('inboxList').addEventListener('click', async (e) => {
+    const take = e.target.closest('[data-take]');
+    const drop = e.target.closest('[data-drop]');
+    const id = Number((take || drop || {}).dataset ? (take || drop).dataset.take || (take || drop).dataset.drop : NaN);
+    if (!nese || !Number.isFinite(id)) return;
+    const s = nese.inbox.find((x) => Number(x.id) === id);
+    if (!s) return;
+    if (take) {
+      take.disabled = true;
+      const f = await addSharedStation(s.uuid);
+      if (!f) { take.disabled = false; return; } // it said why; keep it in the inbox
+    }
+    nese.inbox = nese.inbox.filter((x) => Number(x.id) !== id);
+    renderNese();
+    neseCall('POST', { action: 'dismiss', id }).catch(() => {});
+  });
+
+  function openSendSheet(f) {
+    sendFor = f;
+    $('sendStation').textContent = `> ${f.name} // ${[f.city, f.country].filter(Boolean).join(', ')}`;
+    $('sendMsg').hidden = true;
+    $('sendSheet').hidden = false;
+    $('sendTo').focus();
+  }
+  function closeSendSheet() { $('sendSheet').hidden = true; sendFor = null; }
+  $('closeSend').addEventListener('click', closeSendSheet);
+  $('sendSheet').addEventListener('click', (e) => { if (e.target === $('sendSheet')) closeSendSheet(); });
+  $('sendCopy').addEventListener('click', () => { const f = sendFor; closeSendSheet(); if (f) copyStationLink(f); });
+  function sendMsg(text, warn = false) {
+    const el = $('sendMsg');
+    el.textContent = text; el.classList.toggle('warn', warn); el.hidden = false;
+  }
+  $('sendForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = sendFor;
+    const to = $('sendTo').value.trim();
+    if (!f || !to) return sendMsg('Enter a NESE ID, like NESE-0007.', true);
+    const btn = $('sendForm').querySelector('button');
+    btn.disabled = true;
+    sendMsg('Transmitting…');
+    let j = null;
+    try { j = await neseCall('POST', { action: 'send', to, station: { uuid: f.uuid, name: f.name, city: f.city, country: f.country } }); } catch (_) { /* below */ }
+    btn.disabled = false;
+    if (!j || !j.ok) return sendMsg((j && j.error) || 'NESE network unreachable. Try again.', true);
+    closeSendSheet();
+    $('sendTo').value = '';
+    toast(`> SIGNAL TRANSMITTED TO ${j.to}`);
   });
 
   /* ---------- Boot ---------- */

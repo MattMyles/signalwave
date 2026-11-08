@@ -57,6 +57,7 @@ around the two handlers.
 | `api/station.js` | Looks up one station for a shared link |
 | `api/track.js` | Records a play after 30 s of listening (server-only key) |
 | `api/admin-stats.js` | Dashboard numbers, for ADMIN_EMAILS only |
+| `api/nese.js` | NESE member IDs and station transmissions between members |
 | `public/admin.html`, `admin.js` | The private dashboard page at `/admin` |
 | `supabase/migrations/` | The `user_settings` table and its per-user access rules |
 | `public/vendor/supabase.js` | Supabase browser client 2.118.0 (loaded only when sync is on) |
@@ -86,6 +87,18 @@ With it, a **Sync across devices** section appears at the bottom of the Saved pa
 Supabase's built-in email sender only allows a few emails per hour. That's
 fine for you and a few friends; for more people, add a custom SMTP sender
 (Authentication → Emails → SMTP settings).
+
+## NESE member IDs
+
+Signed-in users become NESE members with an ID (NESE-0000 for the first email in
+`ADMIN_EMAILS`, then NESE-0001, NESE-0002, …). Members see a NESE Dashboard with
+their ID badge, can transmit a saved station to another member's ID, and get
+received stations in Incoming Transmissions. Only IDs are shown, never emails.
+
+Setup: run `supabase/migrations/20261108070000_nese_members.sql` (automatic with
+the Supabase GitHub integration, or paste it into the SQL Editor). It uses the
+same `SUPABASE_SERVICE_ROLE_KEY` and `ADMIN_EMAILS` as the dashboard below. Until
+it's set up, signed-in users just see the normal Saved panel.
 
 ## Private dashboard (/admin)
 

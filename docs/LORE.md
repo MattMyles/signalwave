@@ -28,7 +28,7 @@ Music was thought to be an important factor to aid in the healing process of Neo
 
 *Who is the person using the app, in-world? (A "remote user"? A drifter? A station hacker?) What does "jacking in" mean?*
 
--
+- Registered users are NESE members, each with a NESE ID number (NESE-0000 is Matt's). Members can send signals/stations to a fellow NESE member by entering their ID.
 
 ## The visitors (aliens)
 
@@ -66,6 +66,7 @@ Music was thought to be an important factor to aid in the healing process of Neo
 | Earth Two / Bad Earth | What Neo-Earth is called by individuals so impacted by their injuries that they have trouble processing, depending on their level of brain function |
 | NESE | Neo//Earth Signal Engineers Corps, the organization that streams music around the planet |
 | Neo//Earthlings | The people of Neo-Earth |
+| NESE ID | A NESE member's number, like NESE-0000 |
 | Cynarii, Yinzosa, Mazaelin | The three alien species that fought the war against Earth |
 | Kryx | The 4th species, who secretly protect Neo-Earth (the disco-ball visitors) |
 
@@ -92,6 +93,7 @@ Music was thought to be an important factor to aid in the healing process of Neo
 - 2026-11-08: Named and described the four species: Cynarii, Yinzosa, Mazaelin (the invaders) and Krynn (the protectors).
 - 2026-11-08: The protectors renamed from Krynn to Kryx (Krynn is the world of the Dragonlance series).
 - 2026-11-08: App updated to match: new Kryx lines in vibe mode, and the disco ball's orbs now help shoot asteroids.
+- 2026-11-08: Registered users are NESE members with NESE IDs; NESE ID added to vocabulary.
 
 ---
 
@@ -114,5 +116,7 @@ What the app says today, so it's clear what the lore would change. File names ar
 **Status line** (`public/app.js`): > SCANNING FREQUENCIES… · > LINK ESTABLISHED // 128 kbps MP3 · > SIGNAL LOST — RETUNING… · > SIGNAL STALLED · > STILL SCANNING — WIDENING SEARCH… · > RETUNING TO SAVED SIGNAL… · > LINK PAUSED · > TAP PLAY TO START AUDIO · > STATION HIDDEN — RETUNING… · > SHARED SIGNAL RECEIVED · > GLOBE OFFLINE — AUDIO ONLY
 
 **Saved panel and toasts**: SAVED SIGNALS · ADD RECEIVED SIGNAL · > SIGNAL SAVED · > SIGNAL REMOVED · > SIGNALS SYNCED · > THIS SIGNAL CANNOT BE CAPTURED
+
+**NESE members (signed in)**: top button "NESE"; panel title NESE DASHBOARD; ID badge "NEO//EARTH SIGNAL ENGINEERS CORPS / NESE-0000"; INCOMING TRANSMISSIONS ("FROM NESE-0001", ADD); TRANSMIT SIGNAL sheet (TO A NESE MEMBER / TRANSMIT / OR ANYONE / COPY LINK); > SIGNAL TRANSMITTED TO NESE-0001 · > 1 INCOMING TRANSMISSION · "No NESE member has that ID.".
 
 **Easter egg** (Wrecking Crew, `wreckingcrew.mp3`): > UNKNOWN SIGNAL DETECTED… · > LINK HACKED // STREAM CORRUPTED // JAM IMMINENT · TERMINATE REMOTE USER · > REMOTE USER TERMINATED — RESTORING SIGNAL… · > TRANSMISSION COMPLETE — RETUNING…

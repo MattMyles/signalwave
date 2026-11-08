@@ -40,7 +40,7 @@
     <div class="brand" aria-label="Neo Earth Radio">NEO<b>//</b>EARTH<sup class="suffix">RADIO</sup></div>
     <div class="coords mono" id="coords" aria-hidden="true">--.--°  --.--°</div>
     <button class="btn-ghost" id="openFavs" aria-controls="drawer" aria-expanded="false">
-      <span class="heart" aria-hidden="true">♥</span> SAVED <span id="favCount" class="mono">0</span>
+      <span class="heart" aria-hidden="true">♥</span> <span id="favLabel">SAVED</span> <span id="favCount" class="mono">0</span><span class="inbox-dot" id="inboxDot" hidden aria-label="Incoming transmissions"></span>
     </button>
   </header>
 
@@ -98,9 +98,17 @@
 
   <aside class="drawer" id="drawer" aria-label="Saved stations" hidden>
     <div class="drawer-head">
-      <h2>SAVED SIGNALS</h2>
+      <h2 id="drawerTitle">SAVED SIGNALS</h2>
       <button class="btn-icon" id="closeFavs" aria-label="Close saved stations">✕</button>
     </div>
+    <div class="nese-badge" id="neseBadge" hidden>
+      <span class="nese-org">NEO//EARTH SIGNAL ENGINEERS CORPS</span>
+      <span class="nese-id mono" id="neseId">NESE-····</span>
+    </div>
+    <section class="incoming" id="incoming" hidden>
+      <div class="label">INCOMING TRANSMISSIONS</div>
+      <ul class="favlist" id="inboxList"></ul>
+    </section>
     <label class="toggle"><input type="checkbox" id="showFavDots" checked> Show on globe</label>
     <ul class="favlist" id="favList"></ul>
     <p class="empty" id="favEmpty">No saved stations yet. Tap ♥ while a station plays to keep it here.</p>
@@ -150,6 +158,26 @@
     </section>
     <p class="build mono" id="buildTag"></p>
   </aside>
+
+  <div class="sheet-backdrop" id="sendSheet" hidden>
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sendSheetTitle">
+      <div class="drawer-head">
+        <h2 id="sendSheetTitle">TRANSMIT SIGNAL</h2>
+        <button class="btn-icon" id="closeSend" aria-label="Close">✕</button>
+      </div>
+      <p class="hint mono" id="sendStation"></p>
+      <div class="label">TO A NESE MEMBER</div>
+      <form class="authform" id="sendForm">
+        <input id="sendTo" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="NESE-0000" aria-label="NESE ID to send to">
+        <button class="btn-ghost go" type="submit">TRANSMIT</button>
+      </form>
+      <p class="hint" id="sendMsg" hidden></p>
+      <div class="label">OR ANYONE</div>
+      <div class="drawer-foot">
+        <button class="btn-ghost" id="sendCopy">COPY LINK</button>
+      </div>
+    </section>
+  </div>
 
   <div class="sheet-backdrop" id="genreSheet" hidden>
     <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="genreSheetTitle">

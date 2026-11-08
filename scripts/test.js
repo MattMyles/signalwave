@@ -21,6 +21,14 @@ function icyBody(metaint, title) {
 }
 
 (async () => {
+  console.log('NESE IDs');
+  const { formatNeseId, parseNeseId } = require('../lib/nese');
+  await t('formats IDs with four digits', () => { assert.strictEqual(formatNeseId(0), 'NESE-0000'); assert.strictEqual(formatNeseId(42), 'NESE-0042'); assert.strictEqual(formatNeseId(12345), 'NESE-12345'); });
+  await t('reads IDs the way people type them', () => {
+    for (const [input, n] of [['NESE-0007', 7], ['nese 7', 7], ['#7', 7], ['0007', 7], ['  NESE-0000 ', 0], ['nese:12', 12]]) assert.strictEqual(parseNeseId(input), n, input);
+  });
+  await t('rejects things that are not IDs', () => { for (const bad of ['', 'abc', 'NESE-', '7a', 'NESE-12-3', null]) assert.strictEqual(parseNeseId(bad), null, String(bad)); });
+
   console.log('Filters');
   await t('music station passes', () => assert(isMusicStation(splitTags('house,techno,dance'))));
   await t('talk station rejected', () => assert(!isMusicStation(splitTags('news,talk,pop'))));

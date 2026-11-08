@@ -307,6 +307,20 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; }
 .drawer h2 { margin: 0; font-size: 15px; letter-spacing: 0.24em; color: var(--magenta); }
+/* NESE membership (signed-in users): ID badge, incoming transmissions, transmit sheet */
+.nese-badge {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--yellow);
+  background: linear-gradient(90deg, rgba(252, 238, 10, 0.1), transparent);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+}
+.nese-org { font-size: 9px; letter-spacing: 0.22em; color: var(--dim); font-weight: 600; }
+.nese-id { font-size: 22px; color: var(--yellow); letter-spacing: 0.12em; text-shadow: 0 0 10px rgba(252, 238, 10, 0.5); }
+.incoming { display: flex; flex-direction: column; gap: 8px; }
+.incoming .label { color: var(--green); margin-top: 0; }
+.favlist li.signal { grid-template-columns: 1fr auto auto; border-color: var(--green); }
+.favlist .from { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--green); }
+.favlist .take { color: #000; background: var(--green); border: 0; padding: 6px 10px; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; }
+.inbox-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); margin-left: 2px; }
 .toggle { font-size: 12px; color: var(--dim); letter-spacing: 0.1em; display: flex; gap: 8px; align-items: center; }
 .toggle input { accent-color: var(--yellow); }
 .favlist { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; min-height: 0; }

@@ -14,6 +14,7 @@ const routes = {
   '/api/track': require('./api/track'),
   '/api/station': require('./api/station'),
   '/api/admin-stats': require('./api/admin-stats'),
+  '/api/nese': require('./api/nese'),
 };
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',

@@ -30,6 +30,7 @@ Name check at the rename: no "Neo Earth Radio" found. There is an iPhone app cal
 | `api/station.js` | Looks up one station for a shared link (doesn't require song titles) |
 | `api/track.js` | Logs a play after 30 s of listening (server key; random per-browser visitor ID) |
 | `api/admin-stats.js` | Dashboard numbers, only for `ADMIN_EMAILS` |
+| `api/nese.js` | NESE member ID and transmissions: `GET` (ID + inbox, assigns an ID on first call; admins get 0), `POST {action:'send', to, station}`, `POST {action:'dismiss', id}`. Signed-in users only; server key; calls the `nese_*` SQL functions. `lib/nese.js` formats/parses IDs |
 | `api/config.js` | Tells the browser whether sync is configured (public URL + anon key only) |
 | `api/keepalive.js` | Daily cron (`vercel.json`) so free Supabase doesn't pause |
 
@@ -59,12 +60,13 @@ Env vars (Vercel): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_K
 | Genres | Chips (up to 5 at once), genre editor sheet |
 | Media Session | Lock-screen metadata and controls |
 | Controls | Play/pause, buttons, keyboard (`N`/`→`, `P`/`←`, `Space`, `F`, `V`, `Esc`) |
+| NESE membership | `nese` state, `loadNese()`, `renderNese()` (button label NESE, NESE DASHBOARD title, ID badge, inbox list and green dot), transmit sheet (`openSendSheet`); falls back to the plain Saved panel if `/api/nese` isn't set up |
 | Account & sync | Email one-time code sign-in (code, not link, so it works in the home-screen app); one Supabase row per user (favorites, genres, hidden), debounced push |
 | Boot | Splash screen, "Jack in" |
 
 Browser storage keys (keep stable): `sw.favorites`, `sw.genres`, `sw.selected`, `sw.genre`, `sw.hidden`, `sw.showFavDots`, `sw.visitor`, `sw.auth`, `sw.syncUser`, `sw.syncedAt`, `sw.changedAt`.
 
-Supabase tables (`supabase/migrations/`): `user_settings` (per-user, row-level security), `plays` + admin stats function, `station_checks`. Sign-in email template: `supabase/templates/magic_link.html` (pasted into Supabase by hand).
+Supabase tables (`supabase/migrations/`): `user_settings` (per-user, row-level security), `plays` + admin stats function, `station_checks`, `nese_members` + `nese_signals` with functions `nese_member`, `nese_send`, `nese_inbox`, `nese_dismiss` (server-only; sends are capped at 30/hour, inboxes at 50). Sign-in email template: `supabase/templates/magic_link.html` (pasted into Supabase by hand).
 
 ## Features (current)
 
@@ -72,6 +74,7 @@ Supabase tables (`supabase/migrations/`): `user_settings` (per-user, row-level s
 - Now playing with song titles, station/genre/city/country, bitrate, visualizer, Spotify and Apple Music search links, lock-screen controls.
 - Genre chips, mix up to 5; editable list with sub-genres; dead genres flagged.
 - Saved stations (♥), shown on the globe; share by link; "Not music? Hide station". EXPORT / IMPORT sit right under the saved list (above "Add received signal"); EXPORT turns the list into a checklist (tap rows, SELECT ALL / NONE, EXPORT N, CANCEL) and downloads only the picked stations in the usual file format.
+- **NESE membership** (signed-in users): each gets a NESE ID (Matt, as admin, is NESE-0000; others count up from NESE-0001). The Saved button reads NESE, the panel becomes the NESE DASHBOARD with an ID badge, and a station's link button opens TRANSMIT SIGNAL: send it to a member's ID or copy the link. Received stations wait under INCOMING TRANSMISSIONS (green dot on the button, toast on arrival) until ADD (saves it via `/api/station`) or ✕. Only IDs are ever shown, never emails.
 - Optional sign-in and sync across devices; private admin dashboard with plays, listeners, top stations/countries/genres, station-check stats.
 - Installable PWA with icons and link-preview image.
 - **Vibe mode** (button under the reticle, or `V`): hides the HUD; globe zooms out to fill the screen with a tiny ◂ ▸ bar. `vibes.js` draws warp stars, ship squadrons that fire on the beat and aim at asteroids, asteroids that explode (big ones split), soft beat rings once a bar, and the Kryx UFO (Neo-Earth's secret protectors, per the lore) that lowers a disco ball throwing light spots; the orbs occasionally fire at asteroids on the beat. Its lines (`UFO_LINES`) are radio chatter like "> GALACTIC REQUEST LINE OPEN, NEXT TRACK: PROTECT NEO//EARTH" and wrap to fit the screen; nothing abduction-themed. Matt asked for it calm, not busy: keep spawn rates low. Real beat sync only on streams with CORS on desktop; iPhone uses a genre-tempo fake beat. Full screen via the Fullscreen API (webkit fallback); iPhone Safari can't, the home-screen app fills the screen.
@@ -113,6 +116,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Splash tagline now "Live music radio from a random city on Neo-Earth. Neo-Earth music only."; started `docs/LORE.md` for Matt's Neo-Earth lore (build 19).
 - First lore written (the war, the NESE, the four species); vibe-mode UFO is now the Kryx with new radio-chatter lines, and its disco-ball orbs shoot asteroids (build 20).
 - Link previews and share image now say "Neo//Earth music only" (build 21).
+- NESE member IDs, NESE Dashboard with ID badge, and transmitting stations to another member's ID with an incoming-transmissions inbox (build 22). Needs migration `20261108070000_nese_members.sql`.
 
 Add a line here when shipping something notable.
 
