@@ -64,7 +64,7 @@ Env vars (Vercel): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_K
 | Account & sync | Email one-time code sign-in (code, not link, so it works in the home-screen app); one Supabase row per user (favorites, genres, hidden), debounced push |
 | Boot | Splash screen, "Jack in" |
 
-Browser storage keys (keep stable): `sw.favorites`, `sw.genres`, `sw.selected`, `sw.genre`, `sw.hidden`, `sw.showFavDots`, `sw.visitor`, `sw.auth`, `sw.syncUser`, `sw.syncedAt`, `sw.changedAt`.
+Browser storage keys (keep stable): `sw.favorites`, `sw.genres`, `sw.selected`, `sw.genre`, `sw.hidden`, `sw.showFavDots`, `sw.visitor`, `sw.auth`, `sw.syncUser`, `sw.syncedAt`, `sw.changedAt`, `sw.genresVersion` (one-time genre-list upgrades, e.g. adding Metal in build 32).
 
 Supabase tables (`supabase/migrations/`): `user_settings` (per-user, row-level security), `plays` + admin stats function, `station_checks`, `nese_members` + `nese_signals` with functions `nese_member`, `nese_send`, `nese_inbox`, `nese_dismiss` (server-only; sends are capped at 30/hour, inboxes at 50). Sign-in email template: `supabase/templates/magic_link.html` (pasted into Supabase by hand).
 
@@ -72,7 +72,7 @@ Supabase tables (`supabase/migrations/`): `user_settings` (per-user, row-level s
 
 - Random vetted music station worldwide, globe flies to its city with an arc from the last one; NEXT/PREV, two stations always queued.
 - Now playing with song titles, station/genre/city/country, bitrate, visualizer, Spotify and Apple Music search links, lock-screen controls.
-- Genre chips, mix up to 5; editable list with sub-genres; dead genres flagged.
+- Genre chips, mix up to 5; editable list with sub-genres; dead genres flagged. 15 main genres: Electronic, Rock, Metal, Punk, Pop, Hip-hop, R&B & Soul, Jazz, Blues, Classical, Ambient & Chill, Latin, Reggae & Ska, World, Country & Folk, each with roughly 4–17 styles (`CATALOG` in `app.js`; main-genre ids and search tags must match `GENRES` in `lib/config.js`). Tags match by substring, so avoid short tags that hide inside other words (e.g. "oi", or "dub" as a main tag).
 - Saved stations (♥), shown on the globe; share by link; "Not music? Hide station". EXPORT / IMPORT sit right under the saved list (above "Add received signal"); EXPORT turns the list into a checklist (tap rows, SELECT ALL / NONE, EXPORT N, CANCEL) and downloads only the picked stations in the usual file format.
 - **NESE membership** (signed-in users): each gets a NESE ID (Matt, as admin, is NESE-0000; others count up from NESE-0001). The Saved button reads NESE, the panel becomes the NESE DASHBOARD with an ID badge, and a station's link button opens TRANSMIT SIGNAL: send it to a member's ID or copy the link. Received stations wait under INCOMING TRANSMISSIONS (green dot on the button, toast on arrival) until ADD (saves it via `/api/station`) or ✕. Only IDs are ever shown, never emails.
 - Optional sign-in and sync across devices; private admin dashboard with plays, listeners, top stations/countries/genres, station-check stats.
@@ -123,6 +123,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Now-playing panel background is black at 30% opacity (75% in build 25, 65% in 26, 50% in 28, 30% from build 30).
 - Blur behind the now-playing panel turned down to 20% of the original: 6px → 4.8px (build 27) → 1.2px (build 29).
 - Globe: USA fixed to cyan and Canada to magenta so they read as separate countries; other countries keep the seeded random palette. Fixed colours live in `FIXED` (found by a point inside each country, since the map file has no names) (build 31).
+- Genres reorganized: Metal (heavy, thrash, death, black, doom…), Punk, R&B & Soul, Blues and Reggae & Ska became their own genres, and every genre got more specific styles; Metal added once to existing users' lists (build 32).
 
 Add a line here when shipping something notable.
 

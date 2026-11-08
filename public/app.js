@@ -18,26 +18,31 @@
   // Main genres (matching lib/config.js on the server) and the sub-genres
   // listeners can add. A sub-genre is sent as a single Radio Browser tag.
   const CATALOG = [
-    { id: 'electronic', label: 'Electronic', subs: ['house', 'deep house', 'techno', 'trance', 'drum and bass', 'dubstep', 'synthwave', 'electro', 'minimal', 'breakbeat', 'idm', 'edm'] },
-    { id: 'rock', label: 'Rock', subs: ['classic rock', 'indie', 'alternative', 'metal', 'punk', 'hard rock', 'grunge', 'progressive rock', 'post-rock', 'shoegaze'] },
-    { id: 'pop', label: 'Pop', subs: ['top 40', 'k-pop', 'j-pop', 'city pop', 'synthpop', 'indie pop', 'dance pop', '80s', '90s'] },
-    { id: 'hiphop', label: 'Hip-hop & R&B', subs: ['hip-hop', 'rap', 'rnb', 'trap', 'lofi', 'boom bap'] },
-    { id: 'jazz', label: 'Jazz & Blues', subs: ['smooth jazz', 'bebop', 'swing', 'blues', 'soul', 'funk', 'jazz fusion', 'bossa nova'] },
-    { id: 'classical', label: 'Classical', subs: ['baroque', 'opera', 'piano', 'orchestral', 'chamber music', 'contemporary classical'] },
-    { id: 'ambient', label: 'Ambient & Chill', subs: ['chillout', 'lounge', 'downtempo', 'chillwave', 'new age', 'meditation', 'space music'] },
-    { id: 'latin', label: 'Latin', subs: ['salsa', 'reggaeton', 'cumbia', 'bachata', 'tango', 'samba', 'latin pop', 'merengue'] },
-    { id: 'world', label: 'World', subs: ['afrobeat', 'reggae', 'dancehall', 'bollywood', 'celtic', 'flamenco', 'highlife', 'arabic'] },
-    { id: 'country', label: 'Country & Folk', subs: ['country', 'folk', 'bluegrass', 'americana', 'singer-songwriter'] },
+    { id: 'electronic', label: 'Electronic', subs: ['house', 'deep house', 'tech house', 'techno', 'minimal', 'trance', 'psytrance', 'drum and bass', 'jungle', 'dubstep', 'uk garage', 'breakbeat', 'electro', 'synthwave', 'idm', 'hardstyle', 'edm'] },
+    { id: 'rock', label: 'Rock', subs: ['classic rock', 'hard rock', 'alternative', 'indie rock', 'grunge', 'progressive rock', 'psychedelic rock', 'garage rock', 'britpop', 'post-rock', 'shoegaze', 'stoner rock'] },
+    { id: 'metal', label: 'Metal', subs: ['heavy metal', 'thrash metal', 'death metal', 'black metal', 'doom metal', 'power metal', 'progressive metal', 'symphonic metal', 'metalcore', 'nu metal', 'industrial metal', 'folk metal'] },
+    { id: 'punk', label: 'Punk', subs: ['punk rock', 'pop punk', 'hardcore', 'post-punk', 'ska punk', 'emo'] },
+    { id: 'pop', label: 'Pop', subs: ['top 40', 'dance pop', 'synthpop', 'indie pop', 'dream pop', 'k-pop', 'j-pop', 'city pop', '80s', '90s', '00s'] },
+    { id: 'hiphop', label: 'Hip-hop', subs: ['rap', 'trap', 'boom bap', 'old school hip-hop', 'drill', 'grime', 'lofi hip hop'] },
+    { id: 'soul', label: 'R&B & Soul', subs: ['rnb', 'neo soul', 'soul', 'funk', 'motown', 'disco', 'gospel'] },
+    { id: 'jazz', label: 'Jazz', subs: ['smooth jazz', 'bebop', 'swing', 'big band', 'cool jazz', 'jazz fusion', 'acid jazz', 'latin jazz', 'bossa nova', 'nu jazz'] },
+    { id: 'blues', label: 'Blues', subs: ['delta blues', 'chicago blues', 'electric blues', 'blues rock'] },
+    { id: 'classical', label: 'Classical', subs: ['baroque', 'romantic', 'opera', 'orchestral', 'chamber music', 'piano', 'choral', 'contemporary classical', 'soundtrack'] },
+    { id: 'ambient', label: 'Ambient & Chill', subs: ['chillout', 'lounge', 'downtempo', 'trip-hop', 'chillwave', 'lofi', 'new age', 'meditation', 'space music', 'dark ambient', 'drone'] },
+    { id: 'latin', label: 'Latin', subs: ['salsa', 'reggaeton', 'cumbia', 'bachata', 'merengue', 'tango', 'samba', 'latin pop', 'regional mexicano', 'mariachi', 'forro'] },
+    { id: 'reggae', label: 'Reggae & Ska', subs: ['roots reggae', 'dub', 'dancehall', 'ska', 'lovers rock', 'reggae fusion'] },
+    { id: 'world', label: 'World', subs: ['afrobeat', 'afrobeats', 'highlife', 'bollywood', 'celtic', 'flamenco', 'fado', 'arabic', 'balkan', 'turkish', 'chanson'] },
+    { id: 'country', label: 'Country & Folk', subs: ['country', 'classic country', 'outlaw country', 'alt-country', 'bluegrass', 'americana', 'folk', 'indie folk', 'singer-songwriter'] },
   ];
-  const DEFAULT_GENRES = ['electronic', 'rock', 'pop', 'hiphop', 'jazz', 'classical', 'ambient', 'latin', 'world'];
-  const SPECIAL_LABELS = { rnb: 'R&B', idm: 'IDM', edm: 'EDM', lofi: 'Lo-fi', 'k-pop': 'K-Pop', 'j-pop': 'J-Pop', 'top 40': 'Top 40', 'hip-hop': 'Hip-hop', 'drum and bass': 'Drum & Bass', 'post-rock': 'Post-rock' };
+  const DEFAULT_GENRES = ['electronic', 'rock', 'metal', 'pop', 'hiphop', 'soul', 'jazz', 'classical', 'ambient', 'latin', 'world'];
+  const SPECIAL_LABELS = { rnb: 'R&B', idm: 'IDM', edm: 'EDM', lofi: 'Lo-fi', 'lofi hip hop': 'Lo-fi Hip-hop', 'k-pop': 'K-Pop', 'j-pop': 'J-Pop', 'top 40': 'Top 40', 'hip-hop': 'Hip-hop', 'old school hip-hop': 'Old School Hip-hop', 'drum and bass': 'Drum & Bass', 'post-rock': 'Post-rock', 'post-punk': 'Post-punk', 'uk garage': 'UK Garage', 'trip-hop': 'Trip-hop', 'alt-country': 'Alt-country', 'nu metal': 'Nu Metal', 'nu jazz': 'Nu Jazz', forro: 'Forró', '00s': '2000s', '80s': '80s', '90s': '90s', 'singer-songwriter': 'Singer-songwriter', 'pop punk': 'Pop Punk', 'ska punk': 'Ska Punk' };
   function genreLabel(id) {
     if (id === 'any') return 'Any';
     if (!id.startsWith('tag:')) return (CATALOG.find((c) => c.id === id) || { label: id }).label;
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '31';
+  const BUILD = '32';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -51,7 +56,21 @@
       const old = store.get('sw.genre', 'any'); // from before multi-select
       return old && old !== 'any' ? [old] : [];
     })(),
-    genres: store.get('sw.genres', DEFAULT_GENRES), // chips on the main list, after "Any"
+    genres: (() => { // chips on the main list, after "Any"
+      const list = store.get('sw.genres', null);
+      if (!Array.isArray(list)) return [...DEFAULT_GENRES];
+      // Metal became its own main genre in build 32: add it once to lists made before that.
+      if (store.get('sw.genresVersion', 1) < 2) {
+        store.set('sw.genresVersion', 2);
+        if (!list.includes('metal')) {
+          const at = list.indexOf('rock');
+          list.splice(at >= 0 ? at + 1 : list.length, 0, 'metal');
+          store.set('sw.genres', list);
+          store.set('sw.changedAt', Date.now()); // so sync keeps it rather than the older copy
+        }
+      }
+      return list;
+    })(),
     favorites: store.get('sw.favorites', []),
     hidden: store.get('sw.hidden', []), // stations flagged "not music"
     showFavDots: store.get('sw.showFavDots', true),

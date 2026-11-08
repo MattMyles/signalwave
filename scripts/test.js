@@ -35,6 +35,8 @@ function icyBody(metaint, title) {
   await t('sports rejected', () => assert(!isMusicStation(splitTags('sports,rock'))));
   await t('untagged rejected', () => assert(!isMusicStation(splitTags(''))));
   await t('no music tag rejected', () => assert(!isMusicStation(splitTags('community,local'))));
+  await t('metal is its own genre', () => { const m = resolveGenre('metal'); assert(m && matchesGenre(splitTags('doom metal,stoner'), m)); assert(!matchesGenre(splitTags('classic rock'), m)); });
+  await t('sub-genre tags pass the music check', () => assert(isMusicStation(splitTags('black metal'))));
   await t('genre match', () => assert(matchesGenre(splitTags('deep house,lounge'), resolveGenre('electronic'))));
   await t('genre mismatch', () => assert(!matchesGenre(splitTags('jazz'), resolveGenre('rock'))));
   await t('sub-genre tag resolves', () => assert.deepStrictEqual(resolveGenre(null, 'Deep  House').tags, ['deep house']));
