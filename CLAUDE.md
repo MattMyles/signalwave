@@ -1,6 +1,6 @@
 # Neo Earth Radio — project guide for Claude
 
-Random live music radio from a random city on Earth, played over a neon cyberpunk globe. Built for Matt, who mostly uses it as a home-screen app on his iPhone. Live site deploys from `main` on Vercel. README.md is the human setup guide; this file is the working map for making changes.
+**NEO // EARTH** (Neo Earth Radio, neoearthradio.com, formerly Signal Wave): random live music radio from a random city on Neo-Earth, played over a neon cyberpunk globe. Built for Matt, who mostly uses it as a home-screen app on his iPhone. Live site deploys from `main` on Vercel. README.md is the human setup guide; this file is the working map for making changes.
 
 ## Ground rules
 
@@ -15,9 +15,9 @@ Random live music radio from a random city on Earth, played over a neon cyberpun
 
 ## The name
 
-The app is **NEO // EARTH** (full name **Neo Earth Radio**; "radio" is just the descriptor). Logo: `NEO<b>//</b>EARTH<sup class="suffix">RADIO</sup>`, with RADIO small and raised. Home-screen name: "Neo Earth". Domain: **neoearthradio.com** (Matt registered it 2026-11-08). Renamed from "Signal Wave" / "Signal Wave ER" on 2026-11-08 because Signal Wave Radio is an active UK station (ScoobyMedia Group). Internal names stay "signalwave": GitHub repo, Vercel and Supabase projects, `sw.*` storage keys, the `signal-wave-vNN` cache name, `package.json`, and the export format's `"app": "signal-wave"`. Never rename those.
+The app is **NEO // EARTH** (full name **Neo Earth Radio**; "radio" is just the descriptor). Logo: `NEO<b>//</b>EARTH<sup class="suffix">RADIO</sup>`, with RADIO small and raised. Home-screen name: "Neo Earth". Domain: **neoearthradio.com** (Matt registered it 2026-11-08). Renamed from "Signal Wave" / "Signal Wave ER" on 2026-11-08 because Signal Wave Radio is an active UK station (ScoobyMedia Group). Internal names stay "signalwave" (only things users never see): GitHub repo, Vercel and Supabase projects, `sw.*` storage keys, the `signal-wave-vNN` cache name, `package.json`, and the export format's `"app": "signal-wave"`. Never rename those.
 
-Name check at the rename: no "Neo Earth Radio" found. There is an iPhone app called **Earth Radio** (Vweeter Limited) that also plays world radio on a 3D globe, so lead with "Neo Earth" / NEO // EARTH in branding and recheck before any App Store launch or monetization. To rename again, follow [docs/RENAMING.md](docs/RENAMING.md) (or `/signalwave-rename`).
+Name check at the rename: no "Neo Earth Radio" found. There is an iPhone app called **Earth Radio** (Vweeter Limited) that also plays world radio on a 3D globe, so lead with "Neo Earth" / NEO // EARTH in branding and recheck before any App Store launch or monetization. To rename again, follow [docs/RENAMING.md](docs/RENAMING.md) (or the `/neoearth-rename` skill).
 
 ## How it works
 
@@ -104,10 +104,11 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Easter egg (`wreckingcrew.mp3`): bouncing globe, hacked status line, Terminate Remote User.
 - Vibe mode: full-screen globe with music-reactive effects; UFO changed from tractor beam to disco ball (abduction felt threatening); genre-matched fake beat; exploding asteroids; then toned down (fewer rings and objects) because it was too busy.
 - Renamed on screen to **Signal Wave ER** after finding Signal Wave Radio (UK). Rename plan added in `docs/RENAMING.md`.
-- **2026-11-08** This guide and the `/signalwave` and `/signalwave-rename` skills.
+- **2026-11-08** This guide and the skills for changing and renaming the app (first called `/signalwave` and `/signalwave-rename`, now `/neoearth` and `/neoearth-rename`).
 - Export moved under the saved list; pick which stations to export, or all (build 16).
 - "Add a shared station" renamed "Add received signal" (build 17).
 - Rebranded to **NEO // EARTH** (Neo Earth Radio), domain neoearthradio.com; new link-preview image; export file now `neo-earth-radio-favorites.json` (build 18).
+- Skills renamed `/neoearth` (make changes) and `/neoearth-rename` (rename protocol).
 - Splash tagline now "Live music radio from a random city on Neo-Earth. Neo-Earth music only."; started `docs/LORE.md` for Matt's Neo-Earth lore (build 19).
 
 Add a line here when shipping something notable.
