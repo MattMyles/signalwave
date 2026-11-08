@@ -18,6 +18,8 @@ However, the hatred of the alien species that caused this destruction still boil
 
 ## Radio on Neo-Earth
 
+Radio is the main thrust of the entire concept.
+
 Thankfully the underwater cables for Earth's internet network were mostly intact, and over the period of 20 years, a new network was established from scrap parts found in the devastation.
 
 Music was thought to be an important factor to aid in the healing process of Neo-Earth citizens, so an organization was created called the NESE (Neo//Earth Signal Engineers Corps). They set up the infrastructure to stream music around the planet for everyone to listen to, and heal with.
@@ -36,6 +38,7 @@ Music was thought to be an important factor to aid in the healing process of Neo
 - Nearly all Neo//Earth citizens still hate the alien species that caused the destruction.
 - **The K species (the disco-ball visitors in vibe mode):** a 4th alien species, name starting with "K". They are trying to protect Earth as Neo//Earth rebuilds, while listening to the righteous tracks the Neo//Earthlings are broadcasting to keep the morale and vibes high.
 - Neo//Earth doesn't know what's going on in space, because they haven't rebuilt that technology yet; they don't know the K aliens are protecting them.
+- **How the K aliens talk:** they've heard classic radio lines, like request lines being open, but know they can't access them because the current Earth atmosphere is too volatile to land in. They say these lines to each other as if emulating radio chatter. Example: "GALACTIC REQUEST LINE OPEN, NEXT TRACK: PROTECT NEO//EARTH".
 
 ## Ships and asteroids
 
@@ -82,6 +85,7 @@ Music was thought to be an important factor to aid in the healing process of Neo
 - 2026-11-08: Document started (empty sections).
 - 2026-11-08: The world after the war with three alien species; the rename to Neo-Earth; the rebuilt network and the NESE; vocabulary (Neo-Earth, Earth Two / Bad Earth, NESE).
 - 2026-11-08: NESE is the Signal Engineers Corps (was "Core"); the K species, the disco-ball visitors who secretly protect Neo-Earth; Neo//Earthlings added to vocabulary.
+- 2026-11-08: How the K aliens talk (emulating radio chatter they've overheard); Earth's atmosphere too volatile to land in; radio is the heart of the concept.
 
 ---
 
