@@ -1,9 +1,7 @@
-# Signal Wave ER
+# Neo Earth Radio
 
-*ER = Earth Radio.*
-
-> **Name note:** "Signal Wave" overlaps with Signal Wave Radio (a UK online station). Before
-> launching in an app store or making money from this, rename it: see [docs/RENAMING.md](docs/RENAMING.md).
+neoearthradio.com · formerly "Signal Wave" (the repo, Vercel and Supabase projects keep that name).
+To rename again, see [docs/RENAMING.md](docs/RENAMING.md).
 
 Random live music radio from a random city on Earth, on a neon globe.
 
@@ -74,7 +72,7 @@ With it, a **Sync across devices** section appears at the bottom of the Saved pa
    production branch. Otherwise open Supabase → SQL Editor, paste that file, and run it.
 2. **Put the code in the sign-in email.** Supabase → Authentication → Emails →
    *Magic Link* template. Add the code, for example:
-   `<p>Your Signal Wave ER code: <strong>{{ .Token }}</strong></p>`
+   `<p>Your Neo Earth Radio code: <strong>{{ .Token }}</strong></p>`
    (A code works inside the iPhone home-screen app; a link would open Safari instead.)
 3. **Set the site address.** Authentication → URL Configuration → Site URL =
    your Vercel address.
@@ -106,7 +104,7 @@ can see it.
 
 The **Station checks** panel needs one more migration,
 `supabase/migrations/20261107190000_station_checks.sql`. It shows Radio Browser's
-total, how many stations Signal Wave ER has checked, how many passed, and why the
+total, how many stations Neo Earth Radio has checked, how many passed, and why the
 rest were turned away (each station's latest result).
 
 How it counts: a play is recorded after 30 seconds of listening. Listeners are
@@ -153,8 +151,8 @@ iMessage caches previews, so a link pasted before an update may keep the old loo
   then drops gets one automatic reconnect (at most once a minute) before the
   app moves on. Missing song titles never skip a station that's playing.
 - "Not music? Hide station" remembers hidden stations in the browser.
-- Before going public, change `USER_AGENT` in `lib/config.js` to include your
-  site URL; Nominatim and Radio Browser both ask for an identifying agent.
+- `USER_AGENT` in `lib/config.js` names the site (neoearthradio.com), as Radio
+  Browser asks for an identifying agent. Update it if the domain changes.
 
 ## Credits
 

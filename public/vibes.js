@@ -1,4 +1,4 @@
-/* Signal Wave — vibe mode effects.
+/* Neo Earth Radio — vibe mode effects.
    A full-screen canvas over the globe with drifting stars, passing ships,
    asteroids and the occasional alien encounter. Everything reacts to the
    music: app.js hands over a levels() function that reports how loud the

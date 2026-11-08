@@ -1,9 +1,9 @@
-// Signal Wave service worker.
+// Neo Earth Radio service worker.
 // - App files (page, script, styles): network first, so a new deploy shows up
 //   on the next open; the cached copy is only used when offline.
 // - Big vendor files and the map: cache first (they rarely change).
 // - Audio streams and /api calls: never touched.
-const CACHE = 'signal-wave-v20';
+const CACHE = 'signal-wave-v21';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/icon.svg', '/manifest.webmanifest',
   '/vibes.js', '/vendor/globe.gl.min.js', '/vendor/countries.geojson', '/vendor/supabase.js',
   '/favicon.svg', '/apple-touch-icon.png', '/icon-192.png'];

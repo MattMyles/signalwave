@@ -1,10 +1,12 @@
 # Renaming protocol
 
-Signal Wave (shown as **Signal Wave ER**, "Earth Radio") shares its core name
-with **Signal Wave Radio**, a UK online radio station run by ScoobyMedia Group.
-That's fine for a personal hobby project, but it is a real trademark risk for
-anything public-facing and commercial. This document is the plan for switching
-to a new name when the time comes.
+The app is **NEO // EARTH** (Neo Earth Radio, neoearthradio.com). It was
+renamed from "Signal Wave" on 2026-11-08 because Signal Wave Radio, a UK online
+station run by ScoobyMedia Group, already uses that name. This document is the
+plan for renaming again if it's ever needed (a complaint, a conflict found
+before an app store launch, or a rebrand). One thing to watch: an iPhone app
+called **Earth Radio** (Vweeter Limited) also plays world radio on a 3D globe,
+so keep "Neo Earth" as the lead name and recheck before any App Store launch.
 
 ## When to run it
 
@@ -42,11 +44,11 @@ Only what people see changes. **Leave these alone**, or existing users lose thei
 To list every remaining mention of the old name in user-facing files:
 
 ```sh
-grep -rniE "signal ?wave|SIGNAL<b>//</b>WAVE|SIGNAL//WAVE" public api supabase/templates README.md \
+grep -rniE "neo ?earth|NEO<b>//</b>EARTH|NEO//EARTH" public api supabase/templates README.md lib/config.js \
   --exclude-dir=vendor | grep -v "sw\.\|signal-wave-v\|'signal-wave'\|signal-wave-favorites"
 ```
 
-Files to update (as of the "Signal Wave ER" rename):
+Files to update (as of the NEO // EARTH rename):
 
 | File | What to change |
 |---|---|
@@ -59,7 +61,7 @@ Files to update (as of the "Signal Wave ER" rename):
 | `README.md` | Title and mentions |
 | `public/styles.css` | Only if the logo's length changes: check `.brand.big` still fits on a 390px-wide phone (the boot screen) |
 
-Optional: rename the export download file (`signal-wave-favorites.json` in `app.js`) — imports don't depend on the file name.
+Optional: rename the export download file (`neo-earth-radio-favorites.json` in `app.js`) — imports don't depend on the file name.
 
 ## Step 3: Change the images
 

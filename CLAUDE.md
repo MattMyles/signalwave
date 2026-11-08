@@ -1,4 +1,4 @@
-# Signal Wave ER — project guide for Claude
+# Neo Earth Radio — project guide for Claude
 
 Random live music radio from a random city on Earth, played over a neon cyberpunk globe. Built for Matt, who mostly uses it as a home-screen app on his iPhone. Live site deploys from `main` on Vercel. README.md is the human setup guide; this file is the working map for making changes.
 
@@ -12,13 +12,11 @@ Random live music radio from a random city on Earth, played over a neon cyberpun
 - Visual style: black background, neon yellow `#fcee0a`, cyan `#00f0ff`, magenta `#ff2a6d` / pink `#ff3ec8`, green `#39ff14`; Chakra Petch display font, Share Tech Mono for HUD text; terminal-style status messages like `> LINK ESTABLISHED`. CSS tokens live at the top of `styles.css`.
 - Write commit messages in plain language describing what changed for the user.
 
-## The name (read before any launch, store or money work)
+## The name
 
-"Signal Wave" overlaps with **Signal Wave Radio**, an active UK 24/7 online station run by ScoobyMedia Group. Kept for now because this is a hobby project, shown as **Signal Wave ER** ("Earth Radio", ER small and raised after the logo).
+The app is **NEO // EARTH** (full name **Neo Earth Radio**; "radio" is just the descriptor). Logo: `NEO<b>//</b>EARTH<sup class="suffix">RADIO</sup>`, with RADIO small and raised. Home-screen name: "Neo Earth". Domain: **neoearthradio.com** (Matt registered it 2026-11-08). Renamed from "Signal Wave" / "Signal Wave ER" on 2026-11-08 because Signal Wave Radio is an active UK station (ScoobyMedia Group). Internal names stay "signalwave": GitHub repo, Vercel and Supabase projects, `sw.*` storage keys, the `signal-wave-vNN` cache name, `package.json`, and the export format's `"app": "signal-wave"`. Never rename those.
 
-**Before any app store submission, monetization (ads, subscriptions, paid app, tips, sponsorships, merch), custom domain or serious promotion, or on any name complaint: rename first.** Follow [docs/RENAMING.md](docs/RENAMING.md) (or the `/signalwave-rename` skill). If a task heads toward any of those, say so before doing it.
-
-When renaming, change only user-facing text and images. Never rename the GitHub repo, Vercel or Supabase projects, the `sw.*` storage keys, or the export format's `"app": "signal-wave"`.
+Name check at the rename: no "Neo Earth Radio" found. There is an iPhone app called **Earth Radio** (Vweeter Limited) that also plays world radio on a 3D globe, so lead with "Neo Earth" / NEO // EARTH in branding and recheck before any App Store launch or monetization. To rename again, follow [docs/RENAMING.md](docs/RENAMING.md) (or `/signalwave-rename`).
 
 ## How it works
 
@@ -91,7 +89,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - **Sign-in uses an emailed code, not a link,** because a link opens Safari instead of the home-screen app. Sync is optional; without Supabase everything is saved per device.
 - **Dashboard privacy:** plays count after 30 s; listeners are a random per-browser ID (no IPs or locations); only `ADMIN_EMAILS` can see `/admin`; the service key never reaches the browser.
 - **Updates:** network-first service worker plus a build number shown in the Saved panel, so Matt can confirm his phone has the latest version after closing and reopening the app.
-- **Name:** started as the placeholder "Neon Atlas"; Matt was offered ten options (Ghost Frequency, Gridcast, Carrier Wave, Signal Drift, Neon Meridian and others) and chose **Signal Wave** as a working name. "ER" was added in the second chat after finding Signal Wave Radio (see the name section above).
+- **Name:** started as the placeholder "Neon Atlas"; Matt was offered ten options (Ghost Frequency, Gridcast, Carrier Wave, Signal Drift, Neon Meridian and others) and chose **Signal Wave** as a working name. "ER" (Earth Radio) was added after finding Signal Wave Radio, then the app became **NEO // EARTH** (Neo Earth Radio) once Matt registered neoearthradio.com.
 - Matt originally uploaded files to GitHub by hand; since connecting GitHub, Claude pushes directly.
 
 ## History
@@ -107,6 +105,8 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Renamed on screen to **Signal Wave ER** after finding Signal Wave Radio (UK). Rename plan added in `docs/RENAMING.md`.
 - **2026-11-08** This guide and the `/signalwave` and `/signalwave-rename` skills.
 - Export moved under the saved list; pick which stations to export, or all (build 16).
+- "Add a shared station" renamed "Add received signal" (build 17).
+- Rebranded to **NEO // EARTH** (Neo Earth Radio), domain neoearthradio.com; new link-preview image; export file now `neo-earth-radio-favorites.json` (build 18).
 
 Add a line here when shipping something notable.
 
@@ -115,4 +115,4 @@ Add a line here when shipping something notable.
 - Most stations don't send CORS headers, so the browser can't analyse their audio; iPhone never analyses streams (Safari breaks background playback through Web Audio). True sync everywhere would need a streaming relay (e.g. a Cloudflare Worker); Vercel functions time out and add bandwidth cost.
 - Station pool is in serverless memory; a shared pool would need Vercel KV / Upstash.
 - HLS streams are skipped (no ICY titles).
-- Before going public, put the site URL in `USER_AGENT` in `lib/config.js`.
+- `USER_AGENT` in `lib/config.js` names neoearthradio.com; update it if the domain changes.

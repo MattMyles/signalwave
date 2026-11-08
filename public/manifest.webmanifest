@@ -1,6 +1,6 @@
 {
-  "name": "Signal Wave ER",
-  "short_name": "Signal Wave ER",
+  "name": "Neo Earth Radio",
+  "short_name": "Neo Earth",
   "description": "Random live music radio from anywhere on Earth.",
   "start_url": "/",
   "display": "standalone",

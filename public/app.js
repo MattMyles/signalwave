@@ -1,4 +1,4 @@
-/* Signal Wave front end: globe, player, now-playing HUD, genres, saved stations. */
+/* Neo Earth Radio front end: globe, player, now-playing HUD, genres, saved stations. */
 (() => {
   'use strict';
 
@@ -37,7 +37,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '17';
+  const BUILD = '18';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -1084,7 +1084,7 @@
 
   async function shareStation(f) {
     const url = stationLink(f.uuid);
-    const text = `Listen to ${f.name} from ${f.city} on Signal Wave ER`;
+    const text = `Listen to ${f.name} from ${f.city} on Neo Earth Radio`;
     const canShare = typeof navigator.share === 'function';
     if (await copyText(url)) {
       toast('> LINK COPIED', canShare ? { label: 'SHARE…', fn: () => navigator.share({ title: f.name, text, url }).catch(() => {}) } : null);
@@ -1183,7 +1183,7 @@
       return;
     }
     const m = UUID_RE.exec($('addLink').value);
-    if (!m) { addMsg('Paste a Signal Wave ER station link (it contains ?station=…).', true); return; }
+    if (!m) { addMsg('Paste a Neo Earth Radio station link (it contains ?station=…).', true); return; }
     const btn = $('addForm').querySelector('button');
     btn.disabled = true;
     addMsg('Looking up the station…');
@@ -1240,7 +1240,7 @@
   }
   function downloadFavorites(list) {
     const blob = new Blob([JSON.stringify({ app: 'signal-wave', version: 1, favorites: list }, null, 2)], { type: 'application/json' });
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'signal-wave-favorites.json' });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'neo-earth-radio-favorites.json' });
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
@@ -1270,7 +1270,7 @@
       saveFavs();
       toast(`> IMPORTED ${added} SIGNAL${added === 1 ? '' : 'S'}`);
     } catch (_) {
-      toast('> IMPORT FAILED — NOT A SIGNAL WAVE ER FILE');
+      toast('> IMPORT FAILED — NOT A NEO EARTH RADIO FILE');
     }
   });
 

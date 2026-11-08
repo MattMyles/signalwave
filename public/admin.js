@@ -1,4 +1,4 @@
-/* Signal Wave admin dashboard. Signs in with the same email code as the app,
+/* Neo Earth Radio admin dashboard. Signs in with the same email code as the app,
    then asks /api/admin-stats, which only answers for emails in ADMIN_EMAILS. */
 (() => {
   'use strict';
@@ -129,12 +129,12 @@
       <span class="meter"><i style="width:${c.checked ? (100 * (by[k] || 0)) / c.checked : 0}%"></i></span></div>`;
     box.innerHTML = `<div class="figs">
         ${dirFig}
-        <div class="fig"><span class="k">CHECKED BY SIGNAL WAVE ER</span><span class="v">${fmt(c.checked)}</span><span class="s"><b>${fmt(c.checked_7d)}</b> checked this week</span></div>
+        <div class="fig"><span class="k">CHECKED BY NEO EARTH RADIO</span><span class="v">${fmt(c.checked)}</span><span class="s"><b>${fmt(c.checked_7d)}</b> checked this week</span></div>
         <div class="fig"><span class="k">PASSED EVERY CHECK</span><span class="v" style="color:var(--green)">${fmt(c.passed)}</span><span class="s"><b>${pct}%</b> of checked · in <b>${fmt(c.passed_countries)}</b> countries</span></div>
       </div>
       ${c.checked ? `<div class="reasons">${line('passed')}${rows.length ? '<div class="subhead" style="margin-top:8px">TURNED AWAY BECAUSE</div>' : ''}${rows.map(line).join('')}</div>`
         : '<p class="empty">No stations checked yet. Results appear after the next station search.</p>'}
-      <p class="note" style="margin-top:14px">Each station counts once, with its latest result. Only stations Signal Wave ER has looked at so far are counted, not the whole directory. Slow or offline stations are rechecked after 20 minutes; the rest after 6 hours.</p>`;
+      <p class="note" style="margin-top:14px">Each station counts once, with its latest result. Only stations Neo Earth Radio has looked at so far are counted, not the whole directory. Slow or offline stations are rechecked after 20 minutes; the rest after 6 hours.</p>`;
   }
 
   function ago(iso) {

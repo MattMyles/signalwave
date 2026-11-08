@@ -11,7 +11,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 module.exports = async function handler(req, res) {
   const uuid = (query(req).get('uuid') || '').trim();
-  if (!UUID.test(uuid)) return sendJson(res, 400, { error: "That doesn't look like a Signal Wave ER station link." });
+  if (!UUID.test(uuid)) return sendJson(res, 400, { error: "That doesn't look like a Neo Earth Radio station link." });
   let s;
   try { s = await stationByUuid(uuid); } catch (_) { return sendJson(res, 502, { error: 'The station directory did not answer. Try again in a moment.' }); }
   if (!s || !s.url_resolved) return sendJson(res, 404, { error: 'That station is no longer in the directory.' });
