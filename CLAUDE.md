@@ -118,6 +118,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Link previews and share image now say "Neo//Earth music only" (build 21).
 - NESE member IDs, NESE Dashboard with ID badge, and transmitting stations to another member's ID with an incoming-transmissions inbox (build 22). Needs migration `20261108070000_nese_members.sql`.
 - ALPHA tag on all branding: logos, page titles, splash, admin, share image, sign-in email (build 23).
+- Sign-in email now welcomes people to the Neo//Earth Signal Engineers Corps (template only; Matt pastes it into Supabase).
 
 Add a line here when shipping something notable.
 

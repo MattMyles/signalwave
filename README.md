@@ -74,6 +74,8 @@ With it, a **Sync across devices** section appears at the bottom of the Saved pa
 2. **Put the code in the sign-in email.** Supabase → Authentication → Emails →
    *Magic Link* template. Add the code, for example:
    `<p>Your Neo Earth Radio code: <strong>{{ .Token }}</strong></p>`
+   (or paste the full styled template, `supabase/templates/magic_link.html`, with the subject
+   "Welcome to the Neo//Earth Signal Engineers Corps // code {{ .Token }}")
    (A code works inside the iPhone home-screen app; a link would open Safari instead.)
 3. **Set the site address.** Authentication → URL Configuration → Site URL =
    your Vercel address.
