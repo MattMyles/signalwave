@@ -148,7 +148,7 @@
     setLive(true);
     armPlayRecord();
     const s = state.current;
-    if (s && s.egg) { status('> LINK HACKED // STREAM CORRUPTED // JAM IMMINENT'); $('statusline').classList.add('hacked'); return; }
+    if (s && s.egg) { hack(true); return; }
     if (s) status(`> LINK ESTABLISHED // ${s.bitrate ? `${s.bitrate} kbps ` : ''}${(s.codec || 'stream').toUpperCase()}`);
   }
 
@@ -215,6 +215,7 @@
     if (state.switching) return;
     state.switching = true;
     setBusy(true);
+    hack(false);
     status(message || '> SCANNING FREQUENCIES…', isWarning);
     globeScan(true);
     const g = selKey();
@@ -265,6 +266,9 @@
 
     renderStation(station);
     $('globe').classList.toggle('bouncing', Boolean(station.egg));
+    if (!station.egg) hack(false);
+    $('terminate').hidden = !station.egg;
+    $('flagTalk').hidden = Boolean(station.egg);
     flyTo(station);
     updateMediaSession();
     renderFavorites();
@@ -278,9 +282,10 @@
   async function prev() {
     if (state.switching || !state.back.length) return;
     const station = state.back.pop();
-    if (state.current) state.queue.unshift(state.current);
+    if (state.current && !state.current.egg) state.queue.unshift(state.current);
     state.switching = true;
     setBusy(true);
+    hack(false);
     status('> RETUNING TO PREVIOUS SIGNAL…');
     await tune({ ...station, title: null }, { remember: false }).catch(() => {});
     state.switching = false;
@@ -462,7 +467,9 @@
     $('globe').classList.toggle('bounce-hold', !on); // the dribble waits for the music
     $('liveText').textContent = on ? 'LIVE' : state.paused ? 'PAUSED' : 'TUNING';
   }
-  function status(text, warn = false) {
+  // While the hidden track plays, the hacked message owns the status line until the song is over.
+  function status(text, warn = false, force = false) {
+    if (state.hacked && !force) return;
     const el = $('statusText');
     el.textContent = text;
     $('statusline').classList.toggle('warn', warn);
@@ -998,6 +1005,22 @@
     cors: true,
   };
   const isEgg = (text) => /(^|\/)wreckingcrew\.mp3$/i.test(text.trim());
+  function hack(on) {
+    state.hacked = false;
+    if (on) status('> LINK HACKED // STREAM CORRUPTED // JAM IMMINENT', false, true);
+    state.hacked = on;
+    $('statusline').classList.toggle('hacked', on);
+  }
+  // Ends the hidden track early and goes back to normal radio.
+  $('terminate').addEventListener('click', () => {
+    if (!state.current || !state.current.egg) return;
+    audio.pause();
+    $('terminate').hidden = true;
+    $('flagTalk').hidden = false;
+    $('globe').classList.remove('bouncing');
+    next('> REMOTE USER TERMINATED — RESTORING SIGNAL…');
+  });
+
   async function playEgg() {
     start(false);
     // Cuts in even mid-search; next() sees eggAt and stands down.

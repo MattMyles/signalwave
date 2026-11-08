@@ -170,6 +170,14 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 /* Easter egg: the hidden track "hacks" the link. */
 .statusline.hacked { color: #ff1a1a; text-shadow: 0 0 6px rgba(255, 26, 26, 0.85); font-weight: 700; animation: hackblink 0.9s steps(1, end) infinite; }
 @keyframes hackblink { 50% { opacity: 0.15; } }
+.terminate {
+  display: block; width: 100%; margin-top: 10px; padding: 10px 12px;
+  background: rgba(255, 26, 26, 0.12); border: 1px solid #ff1a1a; color: #ff1a1a;
+  font-family: var(--font-mono); font-size: 13px; font-weight: 700; letter-spacing: 0.16em;
+  text-shadow: 0 0 6px rgba(255, 26, 26, 0.8); box-shadow: 0 0 12px rgba(255, 26, 26, 0.35), inset 0 0 10px rgba(255, 26, 26, 0.15);
+  cursor: pointer;
+}
+.terminate:hover, .terminate:focus-visible { background: #ff1a1a; color: #000; text-shadow: none; }
 .flag {
   display: block; margin: 6px 0 0 auto; background: none; border: 0; padding: 6px 0 0;
   color: var(--dim); font-size: 10px; letter-spacing: 0.14em; font-weight: 600;
