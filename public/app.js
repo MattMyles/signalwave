@@ -37,13 +37,20 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '14'; // shown in the Saved panel, to check which version is running
+  const BUILD = '15';
+  const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
   const RETRY_GAP_MS = 60000; // at most one automatic reconnect per minute before skipping
 
   const state = {
-    genre: store.get('sw.genre', 'any'),
+    // Selected genres, up to MAX_SELECTED; empty means "Any".
+    selected: (() => {
+      const saved = store.get('sw.selected', null);
+      if (Array.isArray(saved)) return saved.filter((g) => typeof g === 'string').slice(0, 5);
+      const old = store.get('sw.genre', 'any'); // from before multi-select
+      return old && old !== 'any' ? [old] : [];
+    })(),
     genres: store.get('sw.genres', DEFAULT_GENRES), // chips on the main list, after "Any"
     favorites: store.get('sw.favorites', []),
     hidden: store.get('sw.hidden', []), // stations flagged "not music"
@@ -169,12 +176,12 @@
   }
 
   /* ---------- Station fetching ---------- */
-  async function fetchStation(genre) {
+  const selKey = () => [...state.selected].sort().join(',');
+  async function fetchStation(sel) {
     const exclude = [...state.played, ...state.hidden, ...state.queue.map((s) => s.uuid)].slice(-250).join(',');
     // Countries just heard (and already queued) so the server picks a different part of the world.
     const recent = [...state.history.slice(-3).map((h) => h.cc), ...state.queue.map((s) => s.countryCode)].filter(Boolean).join(',');
-    const which = genre.startsWith('tag:') ? `tag=${encodeURIComponent(genre.slice(4))}` : `genre=${encodeURIComponent(genre)}`;
-    const r = await fetch(`/api/next?${which}&exclude=${encodeURIComponent(exclude)}&recent=${encodeURIComponent(recent)}`);
+    const r = await fetch(`/api/next?genres=${encodeURIComponent(sel)}&exclude=${encodeURIComponent(exclude)}&recent=${encodeURIComponent(recent)}`);
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.station) {
       const err = new Error(j.error || 'No signal found.');
@@ -187,12 +194,12 @@
   // Keeps two vetted stations ready so NEXT is instant.
   function fillQueue() {
     while (state.queue.length + state.inflight < 2) {
-      const g = state.genre;
+      const g = selKey();
       state.inflight++;
       fetchStation(g)
         .then((s) => {
           const dup = state.queue.some((q) => q.uuid === s.uuid) || state.played.has(s.uuid);
-          if (g === state.genre && !dup) state.queue.push(s);
+          if (g === selKey() && !dup) state.queue.push(s);
         })
         .catch(() => {})
         .finally(() => { state.inflight--; });
@@ -205,7 +212,7 @@
     setBusy(true);
     status(message || '> SCANNING FREQUENCIES…', isWarning);
     globeScan(true);
-    const g = state.genre;
+    const g = selKey();
     let station = state.queue.shift();
     try {
       if (!station) {
@@ -218,7 +225,7 @@
         }
       }
     } catch (e) {
-      if (e.status === 503 && g !== 'any') markGenreDead(g);
+      if (e.status === 503 && state.selected.length === 1) markGenreDead(state.selected[0]);
       status(`> ${e.message.toUpperCase()}`, true);
       globeScan(false);
       state.switching = false;
@@ -1027,8 +1034,7 @@
       b.className = 'chip';
       b.textContent = genreLabel(id);
       b.dataset.genre = id;
-      b.setAttribute('aria-pressed', String(id === state.genre));
-      b.addEventListener('click', () => setGenre(id));
+      b.addEventListener('click', () => toggleGenreSelection(id));
       nav.appendChild(b);
     }
     const edit = document.createElement('button');
@@ -1037,17 +1043,47 @@
     edit.setAttribute('aria-label', 'Edit genres');
     edit.addEventListener('click', openGenreSheet);
     nav.appendChild(edit);
+    markSelectedChips();
   }
-  function setGenre(id) {
-    if (id === state.genre) return;
-    state.genre = id;
-    store.set('sw.genre', id);
-    state.queue = [];
-    document.querySelectorAll('#genres .chip').forEach((c) => {
-      c.setAttribute('aria-pressed', String(c.dataset.genre === id));
-      if (c.dataset.genre === id) c.classList.remove('dead');
+  function markSelectedChips() {
+    document.querySelectorAll('#genres .chip[data-genre]').forEach((c) => {
+      const id = c.dataset.genre;
+      const on = id === 'any' ? state.selected.length === 0 : state.selected.includes(id);
+      c.setAttribute('aria-pressed', String(on));
     });
-    if (state.started) next(`> SCANNING ${id === 'any' ? 'ALL' : genreLabel(id).toUpperCase()} FREQUENCIES…`);
+  }
+  // Tap a genre to add or remove it (up to 5); "Any" clears the selection.
+  // Retuning waits a moment so several quick taps make one change.
+  let retuneTimer = null;
+  function toggleGenreSelection(id) {
+    if (id === 'any') {
+      if (!state.selected.length) return;
+      state.selected = [];
+    } else if (state.selected.includes(id)) {
+      state.selected = state.selected.filter((g) => g !== id);
+    } else if (state.selected.length >= MAX_SELECTED) {
+      toast(`> UP TO ${MAX_SELECTED} GENRES AT ONCE`);
+      return;
+    } else {
+      state.selected = [...state.selected, id];
+      const c = document.querySelector(`#genres .chip[data-genre="${CSS.escape(id)}"]`);
+      if (c) c.classList.remove('dead');
+    }
+    store.set('sw.selected', state.selected);
+    state.queue = [];
+    markSelectedChips();
+    clearTimeout(retuneTimer);
+    if (!state.started) return;
+    status(`> TUNING TO ${selectionLabel()}…`);
+    retuneTimer = setTimeout(() => {
+      next(`> SCANNING ${selectionLabel()} FREQUENCIES…`);
+      fillQueue();
+    }, 900);
+  }
+  function selectionLabel() {
+    const names = state.selected.map((g) => genreLabel(g).toUpperCase());
+    if (!names.length) return 'ALL';
+    return names.length <= 2 ? names.join(' + ') : `${names.slice(0, 2).join(' + ')} +${names.length - 2}`;
   }
   function markGenreDead(id) {
     const c = document.querySelector(`#genres .chip[data-genre="${CSS.escape(id)}"]`);
@@ -1057,9 +1093,10 @@
   // Genre editor: your list (remove) above a catalog of main genres that expand to sub-genres (add).
   function saveGenres() {
     store.set('sw.genres', state.genres);
-    if (state.genre !== 'any' && !state.genres.includes(state.genre)) {
-      state.genre = 'any';
-      store.set('sw.genre', 'any');
+    const kept = state.selected.filter((g) => state.genres.includes(g));
+    if (kept.length !== state.selected.length) {
+      state.selected = kept;
+      store.set('sw.selected', kept);
       state.queue = [];
     }
     renderGenres();
@@ -1255,7 +1292,8 @@
     store.set('sw.favorites', state.favorites);
     store.set('sw.genres', state.genres);
     store.set('sw.hidden', state.hidden);
-    if (state.genre !== 'any' && !state.genres.includes(state.genre)) { state.genre = 'any'; store.set('sw.genre', 'any'); state.queue = []; }
+    const kept = state.selected.filter((g) => state.genres.includes(g));
+    if (kept.length !== state.selected.length) { state.selected = kept; store.set('sw.selected', kept); state.queue = []; }
     renderFavorites(); updatePoints(); setFavButton();
     renderGenres(); renderMyGenres(); syncCatalog();
   }

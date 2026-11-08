@@ -1,13 +1,14 @@
-// GET /api/next?genre=electronic (or tag=deep%20house)&exclude=uuid1,uuid2&recent=DE,US
+// GET /api/next?genres=electronic,tag:deep%20house&exclude=uuid1,uuid2&recent=DE,US
 // Returns one random station that passed all five checks.
-const { nextStation, resolveGenre } = require('../lib/vet');
+const { nextStation, resolveGenre, resolveGenres } = require('../lib/vet');
 const { reportClick } = require('../lib/radio');
 const { query, sendJson } = require('../lib/http');
 
 module.exports = async function handler(req, res) {
   const q = query(req);
-  // ?genre=electronic for a main genre, or ?tag=deep%20house for a sub-genre.
-  const spec = resolveGenre(q.get('genre'), q.get('tag'));
+  // ?genres=electronic,tag:deep%20house (up to 5), or the older single
+  // ?genre=electronic / ?tag=deep%20house.
+  const spec = q.get('genres') != null ? resolveGenres(q.get('genres')) : resolveGenre(q.get('genre'), q.get('tag'));
   const exclude = new Set((q.get('exclude') || '').split(',').map((s) => s.trim()).filter(Boolean).slice(0, 300));
   const recent = (q.get('recent') || '').split(',').map((s) => s.trim().toUpperCase()).filter((s) => /^[A-Z]{2}$/.test(s)).slice(0, 4);
   try {

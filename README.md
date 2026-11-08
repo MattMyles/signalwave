@@ -42,7 +42,7 @@ around the two handlers.
 | `public/index.html`, `styles.css`, `app.js` | The app: globe, HUD, player, genres, saved stations |
 | `public/vendor/` | globe.gl 2.46.1 and a world map (bundled, no CDN) |
 | `public/sw.js`, `manifest.webmanifest`, `icon.svg` | Installable PWA |
-| `api/next.js` | Returns one vetted station: `/api/next?genre=jazz` or `?tag=deep%20house` (a sub-genre) |
+| `api/next.js` | Returns one vetted station: `/api/next?genres=jazz,tag:deep%20house` (up to 5) |
 | `api/nowplaying.js` | Current song title: `/api/nowplaying?uuid=…` |
 | `lib/config.js` | **Tune here:** genre → tag map, talk blocklist, timeouts |
 | `lib/vet.js` | The five station checks and the per-genre cache |
@@ -119,6 +119,7 @@ station** in the Saved panel adds it too. `/api/station` looks the station up
 
 ## Genres
 
+Tap genre chips to mix up to 5 at once; each search picks one of them at random, so they share airtime evenly. **Any** clears the selection.
 Tap **+ EDIT** at the end of the genre row to remove genres or add sub-genres.
 The list is saved in the browser. To add sub-genres to the menu, edit `CATALOG` in
 `public/app.js`; main genres and their tags live in `lib/config.js`.

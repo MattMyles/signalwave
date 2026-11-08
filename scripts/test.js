@@ -5,7 +5,7 @@ const assert = require('assert');
 const http = require('http');
 const net = require('net');
 const { probeStream, isPrivateIp } = require('../lib/icy');
-const { isMusicStation, looksLikeSong, splitTags, matchesGenre, resolveGenre } = require('../lib/vet');
+const { isMusicStation, looksLikeSong, splitTags, matchesGenre, resolveGenre, resolveGenres } = require('../lib/vet');
 
 let failures = 0;
 async function t(name, fn) {
@@ -36,6 +36,16 @@ function icyBody(metaint, title) {
     assert(!isMusicStation(splitTags('shoegaze')));
     assert(isMusicStation(splitTags('shoegaze'), ['shoegaze']));
   });
+  await t('several genres combine', () => {
+    const s = resolveGenres('jazz,tag:deep house,jazz,nonsense');
+    assert.strictEqual(s.parts.length, 2);
+    assert(matchesGenre(splitTags('deep house'), s) && matchesGenre(splitTags('bebop,jazz'), s));
+    assert(!matchesGenre(splitTags('metal'), s));
+  });
+  await t('one genre in the list stays simple', () => assert.strictEqual(resolveGenres('rock').key, 'rock'));
+  await t('empty list means any', () => assert.strictEqual(resolveGenres(''), null));
+  await t('at most five genres', () => assert.strictEqual(resolveGenres('rock,pop,jazz,latin,world,classical').parts.length, 5));
+  await t('same genres, same pool key', () => assert.strictEqual(resolveGenres('rock,jazz').key, resolveGenres('jazz,rock').key));
   await t('talk still blocked with a requested tag', () => assert(!isMusicStation(splitTags('shoegaze,talk'), ['shoegaze'])));
 
   console.log('Song titles');
