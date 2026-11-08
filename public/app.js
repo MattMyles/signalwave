@@ -37,7 +37,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '16';
+  const BUILD = '17';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -1064,8 +1064,8 @@
 
   /* ---------- Sharing stations ----------
      A shared link is the site address plus ?station=<id>. Opening it adds the
-     station to saved stations and plays it first; pasting it into "Add a
-     shared station" in the Saved panel adds it too. */
+     station to saved stations and plays it first; pasting it into "Add received
+     signal" in the Saved panel adds it too. */
   const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
   const stationLink = (uuid) => `${location.origin}/?station=${uuid}`;
 

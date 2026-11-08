@@ -118,8 +118,8 @@ key; only the server can read it.
 
 Each saved station has a link button that copies `your-site/?station=<id>`
 (with a Share… option on phones). Opening that link adds the station to the
-other person's saved list and plays it first; pasting it into **Add a shared
-station** in the Saved panel adds it too. `/api/station` looks the station up
+other person's saved list and plays it first; pasting it into **Add received
+signal** in the Saved panel adds it too. `/api/station` looks the station up
 (it doesn't require song titles, since the person picked it on purpose).
 
 ## Genres
