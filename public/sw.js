@@ -3,7 +3,7 @@
 //   on the next open; the cached copy is only used when offline.
 // - Big vendor files and the map: cache first (they rarely change).
 // - Audio streams and /api calls: never touched.
-const CACHE = 'signal-wave-v11';
+const CACHE = 'signal-wave-v12';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/icon.svg', '/manifest.webmanifest',
   '/vendor/globe.gl.min.js', '/vendor/countries.geojson', '/vendor/supabase.js',
   '/favicon.svg', '/apple-touch-icon.png', '/icon-192.png'];
@@ -18,6 +18,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.startsWith('/api/')) return;
+  if (url.pathname.startsWith('/media/')) return; // audio files: let the browser handle range requests
 
   if (url.pathname.startsWith('/vendor/')) {
     e.respondWith(caches.match(e.request).then((hit) => hit || fetch(e.request).then((r) => {

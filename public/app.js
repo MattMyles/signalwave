@@ -108,6 +108,10 @@
       if (el !== audio || !state.current || !el.getAttribute('src')) return;
       troubled('> SIGNAL LOST');
     });
+    // Only the hidden track ever ends; live radio doesn't. Back to the airwaves.
+    el.addEventListener('ended', () => {
+      if (el === audio && state.current && state.current.egg) next('> TRANSMISSION COMPLETE — RETUNING…');
+    });
   });
 
   let stallAt = 0;
@@ -213,6 +217,7 @@
     status(message || '> SCANNING FREQUENCIES…', isWarning);
     globeScan(true);
     const g = selKey();
+    const startedAt = Date.now();
     let station = state.queue.shift();
     try {
       if (!station) {
@@ -225,6 +230,7 @@
         }
       }
     } catch (e) {
+      if (state.eggAt >= startedAt) return; // the hidden track took over; stay quiet
       if (e.status === 503 && state.selected.length === 1) markGenreDead(state.selected[0]);
       status(`> ${e.message.toUpperCase()}`, true);
       globeScan(false);
@@ -232,6 +238,8 @@
       setBusy(false);
       return;
     }
+    // The hidden track was tuned while this search ran: keep the find for later.
+    if (state.eggAt >= startedAt) { state.queue.unshift(station); return; }
     fillQueue();
     await tune(station, { remember: !isWarning }).catch(() => {});
     state.switching = false;
@@ -255,6 +263,7 @@
     state.timers.track = null;
 
     renderStation(station);
+    $('globe').classList.toggle('bouncing', Boolean(station.egg));
     flyTo(station);
     updateMediaSession();
     renderFavorites();
@@ -304,7 +313,7 @@
   }
   function armPlayRecord() {
     const s = state.current;
-    if (!s || state.recorded === s.uuid || state.timers.track) return;
+    if (!s || s.egg || state.recorded === s.uuid || state.timers.track) return;
     state.timers.track = setTimeout(() => {
       state.timers.track = null;
       if (state.current !== s || state.paused) return;
@@ -333,7 +342,7 @@
 
   async function pollTitle() {
     const s = state.current;
-    if (!s || state.paused || document.hidden && !('mediaSession' in navigator)) return;
+    if (!s || s.egg || state.paused || document.hidden && !('mediaSession' in navigator)) return;
     let title = null;
     try {
       const r = await fetch(`/api/nowplaying?uuid=${encodeURIComponent(s.uuid)}`);
@@ -449,6 +458,7 @@
 
   function setLive(on) {
     $('live').classList.toggle('on', on);
+    $('globe').classList.toggle('bounce-hold', !on); // the dribble waits for the music
     $('liveText').textContent = on ? 'LIVE' : state.paused ? 'PAUSED' : 'TUNING';
   }
   function status(text, warn = false) {
@@ -790,7 +800,8 @@
     }] : [];
     globe.arcsData([...network.arcs, ...journey]);
     globe.htmlElementsData([{ lat: s.lat, lng: s.lng, city: s.city }]);
-    const close = narrow.matches ? 0.9 : 0.8;
+    // The hidden track pulls back so the whole globe can dribble like a ball.
+    const close = s.egg ? 2.6 : narrow.matches ? 0.9 : 0.8;
     if (reduced) { globe.pointOfView({ lat: s.lat, lng: s.lng, altitude: close }, 0); scheduleDrift(); return; }
     globe.pointOfView({ lat: s.lat, lng: s.lng, altitude: 2.2 }, 1500);
     setTimeout(() => {
@@ -805,7 +816,7 @@
     idleTimer = setTimeout(() => {
       if (!globe || !state.current) return;
       const s = state.current;
-      globe.pointOfView({ lat: s.lat, lng: s.lng, altitude: 1.8 }, reduced ? 0 : 2500);
+      globe.pointOfView({ lat: s.lat, lng: s.lng, altitude: s.egg ? 2.6 : 1.8 }, reduced ? 0 : 2500);
       setTimeout(() => { globe.controls().autoRotate = !reduced; globe.controls().autoRotateSpeed = 0.25; }, 2600);
     }, 8000);
   }
@@ -826,6 +837,7 @@
   function toggleFavorite() {
     const s = state.current;
     if (!s) return;
+    if (s.egg) { toast('> THIS SIGNAL CANNOT BE CAPTURED'); return; }
     if (isFav(s.uuid)) {
       state.favorites = state.favorites.filter((f) => f.uuid !== s.uuid);
       toast('> SIGNAL REMOVED');
@@ -965,8 +977,46 @@
     el.hidden = !text;
   }
 
+  /* ---------- Easter egg ----------
+     Typing "wreckingcrew.mp3" into the shared-link box tunes a hidden signal. */
+  const EGG = {
+    egg: true,
+    uuid: 'wreckingcrew',
+    name: 'WRECKING CREW',
+    url: '/media/wreckingcrew.mp3',
+    title: "Quad City DJ's - Space Jam",
+    genre: 'CLASSIFIED',
+    city: 'Jacksonville',
+    country: 'United States',
+    countryCode: 'US',
+    lat: 30.33,
+    lng: -81.66,
+    bitrate: 128,
+    codec: 'mp3',
+    cors: true,
+  };
+  const isEgg = (text) => /(^|\/)wreckingcrew\.mp3$/i.test(text.trim());
+  async function playEgg() {
+    start(false);
+    // Cuts in even mid-search; next() sees eggAt and stands down.
+    state.eggAt = Date.now();
+    state.switching = true;
+    setBusy(true);
+    status('> UNKNOWN SIGNAL DETECTED…');
+    await tune({ ...EGG }).catch(() => {});
+    state.switching = false;
+    setBusy(false);
+  }
+
   $('addForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (isEgg($('addLink').value)) {
+      $('addLink').value = '';
+      addMsg('');
+      closeDrawer();
+      playEgg();
+      return;
+    }
     const m = UUID_RE.exec($('addLink').value);
     if (!m) { addMsg('Paste a Signal Wave station link (it contains ?station=…).', true); return; }
     const btn = $('addForm').querySelector('button');
@@ -1202,7 +1252,13 @@
     if (play) {
       // Live radio: reload the stream so playback resumes at "now", not where it paused.
       state.paused = false;
-      playUrl(state.current);
+      // The hidden track is a file, not live radio, so pick up where it paused.
+      if (state.current.egg && audio.getAttribute('src')) {
+        setPlayButton();
+        audio.play().catch(() => {});
+      } else {
+        playUrl(state.current);
+      }
       clearInterval(state.timers.poll);
       state.timers.poll = setInterval(pollTitle, POLL_MS);
     } else {

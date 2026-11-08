@@ -90,6 +90,17 @@ button:focus-visible, label:focus-visible, input:focus-visible {
   cursor: grab; touch-action: none;
 }
 #globe canvas { display: block; }
+/* Easter egg: the globe dribbles like a basketball while the hidden track plays.
+   It falls with gravity, squashes on the floor, and springs back up. */
+#globe.bouncing > * { animation: dribble 0.56s infinite; transform-origin: 50% 100%; will-change: transform; }
+#globe.bouncing.bounce-hold > * { animation-play-state: paused; }
+@keyframes dribble {
+  0%   { transform: translateY(-14%) scale(1, 1); animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
+  46%  { transform: translateY(0) scale(1.02, 0.98); }
+  50%  { transform: translateY(1.5%) scale(1.08, 0.9); animation-timing-function: cubic-bezier(0, 0.55, 0.45, 1); }
+  56%  { transform: translateY(0) scale(0.98, 1.03); }
+  100% { transform: translateY(-14%) scale(1, 1); }
+}
 .city-label {
   pointer-events: none; transform: translate(14px, -50%);
   font-family: var(--font-mono); font-size: 11px; color: var(--yellow); white-space: nowrap;
