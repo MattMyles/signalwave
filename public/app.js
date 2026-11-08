@@ -37,7 +37,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '30';
+  const BUILD = '31';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -809,10 +809,36 @@
         const palette = ['rgba(255, 62, 200, 0.95)', 'rgba(255, 62, 200, 0.8)', 'rgba(190, 90, 255, 0.85)',
           'rgba(150, 80, 255, 0.7)', 'rgba(255, 90, 220, 0.9)', 'rgba(170, 70, 255, 0.8)', 'rgba(0, 240, 255, 0.85)'];
         geo.features.forEach((f) => { f.properties.color = palette[Math.floor(rnd() * palette.length)]; });
+        // Neighbours that should stand apart get fixed colours. The map file has no
+        // country names, so each is found by a point inside it (lng, lat).
+        const FIXED = [
+          [[-98, 39], 'rgba(0, 240, 255, 0.85)'], // USA (incl. Alaska): cyan
+          [[-106, 56], 'rgba(255, 62, 200, 0.95)'], // Canada: magenta
+        ];
+        for (const [pt, color] of FIXED) {
+          const f = geo.features.find((x) => featureContains(x, pt));
+          if (f) f.properties.color = color;
+        }
         countryFeatures = geo.features;
       })
       .catch(() => {})
       .then(applyGlobeData);
+  }
+
+  // Is [lng, lat] inside a GeoJSON country (outer rings only; good enough for picking a country)?
+  function featureContains(f, [x, y]) {
+    const g = f && f.geometry;
+    if (!g) return false;
+    const polys = g.type === 'MultiPolygon' ? g.coordinates : g.type === 'Polygon' ? [g.coordinates] : [];
+    return polys.some((poly) => {
+      const ring = poly[0];
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const [xi, yi] = ring[i], [xj, yj] = ring[j];
+        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+      }
+      return inside;
+    });
   }
 
   /* World network dressing: hub cities as glowing towers, data arcs between

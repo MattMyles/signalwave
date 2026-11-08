@@ -3,7 +3,7 @@
 //   on the next open; the cached copy is only used when offline.
 // - Big vendor files and the map: cache first (they rarely change).
 // - Audio streams and /api calls: never touched.
-const CACHE = 'signal-wave-v33';
+const CACHE = 'signal-wave-v34';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/icon.svg', '/manifest.webmanifest',
   '/vibes.js', '/vendor/globe.gl.min.js', '/vendor/countries.geojson', '/vendor/supabase.js',
   '/favicon.svg', '/apple-touch-icon.png', '/icon-192.png'];

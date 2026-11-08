@@ -122,6 +122,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Now-playing panel label "STATION" is now "SIGNAL" (build 24).
 - Now-playing panel background is black at 30% opacity (75% in build 25, 65% in 26, 50% in 28, 30% from build 30).
 - Blur behind the now-playing panel turned down to 20% of the original: 6px → 4.8px (build 27) → 1.2px (build 29).
+- Globe: USA fixed to cyan and Canada to magenta so they read as separate countries; other countries keep the seeded random palette. Fixed colours live in `FIXED` (found by a point inside each country, since the map file has no names) (build 31).
 
 Add a line here when shipping something notable.
 
