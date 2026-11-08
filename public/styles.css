@@ -235,7 +235,26 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 .chip[aria-pressed='true'] { background: var(--cyan); color: #000; border-color: var(--cyan); }
 .chip.dead { opacity: 0.4; text-decoration: line-through; }
 
-.chip.edit { color: var(--yellow); border-color: rgba(252, 238, 10, 0.45); border-style: dashed; }
+/* The genre row scrolls; the small EDIT button stays put at its end. */
+.genre-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.genre-row .genres { flex: 1 1 auto; min-width: 0; }
+.genre-edit {
+  flex: none; height: 28px; padding: 0 8px; background: none;
+  border: 1px dashed rgba(252, 238, 10, 0.55); color: var(--yellow);
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
+}
+.genre-edit:hover, .genre-edit:focus-visible { background: rgba(252, 238, 10, 0.12); }
+
+/* First-run question: what do you want to hear first? */
+.onboard-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.onboard-grid button {
+  flex: 1 1 calc(50% - 8px); min-height: 44px; padding: 8px 10px; text-align: left;
+  border: 1px solid var(--line); background: rgba(0, 240, 255, 0.04); color: var(--text);
+  font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.onboard-grid button:hover, .onboard-grid button:focus-visible { border-color: var(--cyan); color: var(--cyan); }
+.onboard-grid button.all, .onboard-grid button.all:hover, .onboard-grid button.all:focus-visible { flex-basis: 100%; background: var(--cyan); color: #000; border-color: var(--cyan); }
+#onboard h2 { color: var(--yellow); }
 
 /* Genre editor */
 .sheet-backdrop {

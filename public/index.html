@@ -84,7 +84,10 @@
       <button class="terminate" id="terminate" hidden>TERMINATE REMOTE USER</button>
     </section>
 
-    <nav class="genres" id="genres" aria-label="Genre"></nav>
+    <div class="genre-row">
+      <nav class="genres" id="genres" aria-label="Genre"></nav>
+      <button class="genre-edit" id="editGenres" aria-label="Edit genres" title="Edit genres">EDIT</button>
+    </div>
 
     <div class="controls">
       <button class="ctl fav" id="favBtn" aria-pressed="false" aria-label="Save station">♥</button>
@@ -159,6 +162,24 @@
     <p class="build mono" id="buildTag"></p>
   </aside>
 
+  <div class="sheet-backdrop" id="onboard" hidden>
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="onboardTitle">
+      <div class="drawer-head">
+        <h2 id="onboardTitle">WHAT DO YOU WANT TO HEAR FIRST?</h2>
+      </div>
+      <div id="onboardMains">
+        <p class="hint">Pick a genre. You can change it any time.</p>
+        <div class="onboard-grid" id="onboardGrid"></div>
+        <button class="btn-ghost" id="onboardAny">SURPRISE ME // ANY MUSIC</button>
+      </div>
+      <div id="onboardSubs" hidden>
+        <p class="hint">Narrow it down to a style, or take the whole genre.</p>
+        <div class="onboard-grid" id="onboardSubGrid"></div>
+        <button class="btn-ghost" id="onboardBack">◂ BACK</button>
+      </div>
+    </section>
+  </div>
+
   <div class="sheet-backdrop" id="sendSheet" hidden>
     <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sendSheetTitle">
       <div class="drawer-head">
@@ -185,6 +206,7 @@
         <h2 id="genreSheetTitle">GENRES</h2>
         <button class="btn-icon" id="closeGenres" aria-label="Close genres">✕</button>
       </div>
+      <p class="hint">Add as many genres as you like. On the main screen, pick up to <b>5</b> at a time to rotate through.</p>
       <div class="label">ON YOUR LIST · TAP TO REMOVE</div>
       <div class="mylist" id="myGenres"></div>
       <p class="empty" id="myGenresEmpty" hidden>Only Any is on your list. Add genres below.</p>
@@ -200,7 +222,7 @@
   <div class="boot" id="boot">
     <div class="boot-inner">
       <div class="brand big" data-text="NEO//EARTH" aria-label="Neo Earth Radio, alpha">NEO<b>//</b>EARTH<sup class="suffix">RADIO</sup></div>
-      <span class="alpha alpha-boot">ALPHA // STILL IN DEVELOPMENT</span>
+      <span class="alpha alpha-boot">ALPHA</span>
       <p class="mono boot-log" id="bootLog">&gt; LOADING WORLD GRID…</p>
       <p class="boot-copy">Live music radio from a random city on Neo-Earth. Neo-Earth music only.</p>
       <button class="jack" id="jackIn">JACK IN</button>

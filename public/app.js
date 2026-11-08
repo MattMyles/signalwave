@@ -42,11 +42,14 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '32';
+  const BUILD = '33';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
   const RETRY_GAP_MS = 60000; // at most one automatic reconnect per minute before skipping
+
+  // No genre list saved yet means this is someone's first visit: ask what they want to hear.
+  const firstVisit = store.get('sw.genres', null) === null;
 
   const state = {
     // Selected genres, up to MAX_SELECTED; empty means "Any".
@@ -1340,12 +1343,6 @@
       b.addEventListener('click', () => toggleGenreSelection(id));
       nav.appendChild(b);
     }
-    const edit = document.createElement('button');
-    edit.className = 'chip edit';
-    edit.textContent = '+ EDIT';
-    edit.setAttribute('aria-label', 'Edit genres');
-    edit.addEventListener('click', openGenreSheet);
-    nav.appendChild(edit);
     markSelectedChips();
   }
   function markSelectedChips() {
@@ -1470,10 +1467,84 @@
     const active = document.querySelector('#genres .chip[aria-pressed="true"]');
     if (active) active.scrollIntoView({ block: 'nearest', inline: 'center' });
   }
+  $('editGenres').addEventListener('click', openGenreSheet);
   $('closeGenres').addEventListener('click', closeGenreSheet);
   $('doneGenres').addEventListener('click', closeGenreSheet);
   $('genreSheet').addEventListener('click', (e) => { if (e.target === $('genreSheet')) closeGenreSheet(); });
   $('resetGenres').addEventListener('click', () => { state.genres = [...DEFAULT_GENRES]; saveGenres(); });
+
+  /* ---------- First visit ----------
+     New listeners pick a genre (and optionally one of its styles) before the
+     first station. Their list then starts with that pick plus related genres,
+     5 in all, and the pick is selected. "Surprise me" keeps the defaults. */
+  const RELATED = {
+    electronic: ['ambient', 'pop', 'hiphop', 'soul'],
+    rock: ['metal', 'punk', 'blues', 'pop'],
+    metal: ['rock', 'punk', 'blues', 'electronic'],
+    punk: ['rock', 'metal', 'reggae', 'pop'],
+    pop: ['electronic', 'soul', 'hiphop', 'latin'],
+    hiphop: ['soul', 'electronic', 'reggae', 'pop'],
+    soul: ['hiphop', 'jazz', 'blues', 'pop'],
+    jazz: ['blues', 'soul', 'classical', 'latin'],
+    blues: ['jazz', 'rock', 'soul', 'country'],
+    classical: ['ambient', 'jazz', 'world', 'blues'],
+    ambient: ['electronic', 'classical', 'jazz', 'world'],
+    latin: ['world', 'pop', 'reggae', 'jazz'],
+    reggae: ['world', 'hiphop', 'latin', 'soul'],
+    world: ['latin', 'reggae', 'jazz', 'ambient'],
+    country: ['blues', 'rock', 'pop', 'soul'],
+  };
+  function openOnboarding() {
+    const grid = $('onboardGrid');
+    grid.innerHTML = '';
+    for (const main of CATALOG) {
+      const b = document.createElement('button');
+      b.textContent = main.label;
+      b.addEventListener('click', () => showOnboardSubs(main));
+      grid.appendChild(b);
+    }
+    $('onboardMains').hidden = false;
+    $('onboardSubs').hidden = true;
+    $('onboard').hidden = false;
+  }
+  function showOnboardSubs(main) {
+    const grid = $('onboardSubGrid');
+    grid.innerHTML = '';
+    const all = document.createElement('button');
+    all.className = 'all';
+    all.textContent = `ALL ${main.label}`;
+    all.addEventListener('click', () => finishOnboarding(main.id, null));
+    grid.appendChild(all);
+    for (const t of main.subs) {
+      const b = document.createElement('button');
+      b.textContent = genreLabel(`tag:${t}`);
+      b.addEventListener('click', () => finishOnboarding(main.id, `tag:${t}`));
+      grid.appendChild(b);
+    }
+    $('onboardMains').hidden = true;
+    $('onboardSubs').hidden = false;
+    $('onboard').querySelector('.sheet').scrollTop = 0;
+  }
+  $('onboardBack').addEventListener('click', () => { $('onboardMains').hidden = false; $('onboardSubs').hidden = true; });
+  $('onboardAny').addEventListener('click', () => finishOnboarding(null, null));
+  function finishOnboarding(mainId, sub) {
+    state.onboarded = true;
+    $('onboard').hidden = true;
+    if (mainId) {
+      const related = RELATED[mainId] || [];
+      state.genres = sub ? [sub, mainId, ...related.slice(0, 3)] : [mainId, ...related.slice(0, 4)];
+      state.selected = [sub || mainId];
+    } else {
+      state.genres = [...DEFAULT_GENRES];
+      state.selected = [];
+    }
+    store.set('sw.genresVersion', 2);
+    store.set('sw.selected', state.selected);
+    saveGenres();
+    state.queue = [];
+    next(`> SCANNING ${selectionLabel()} FREQUENCIES…`);
+    fillQueue();
+  }
 
   /* ---------- Media Session (lock screen) ---------- */
   function updateMediaSession() {
@@ -1540,6 +1611,7 @@
   }
 
   $('jackIn').addEventListener('click', async () => {
+    if (!sharedOnOpen && firstVisit && !state.onboarded) { start(false); return openOnboarding(); }
     if (!sharedOnOpen) return start(true);
     start(false);
     const f = await sharedOnOpen;

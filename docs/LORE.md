@@ -101,7 +101,7 @@ Music was thought to be an important factor to aid in the healing process of Neo
 
 What the app says today, so it's clear what the lore would change. File names are for Claude.
 
-**Splash page** (`public/index.html`): logo NEO // EARTH ^RADIO with an ALPHA tag and "ALPHA // STILL IN DEVELOPMENT" (development marker, not lore); tagline "Live music radio from a random city on Neo-Earth. Neo-Earth music only."; boot log "> LOADING WORLD GRID…" then "> WORLD GRID ONLINE // READY"; button "JACK IN".
+**Splash page** (`public/index.html`): logo NEO // EARTH ^RADIO with an ALPHA tag (development marker, not lore); tagline "Live music radio from a random city on Neo-Earth. Neo-Earth music only."; boot log "> LOADING WORLD GRID…" then "> WORLD GRID ONLINE // READY"; button "JACK IN"; first visit asks "WHAT DO YOU WANT TO HEAR FIRST?" (SURPRISE ME // ANY MUSIC, ALL <GENRE>).
 
 **Link previews** (`public/index.html` meta tags, `public/og-image.png`): "Live music radio from a random city on Neo-Earth. Neo//Earth music only." / image tagline "> NEO//EARTH MUSIC ONLY_".
 

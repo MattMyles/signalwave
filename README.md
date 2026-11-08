@@ -137,8 +137,8 @@ signal** in the Saved panel adds it too. `/api/station` looks the station up
 
 ## Genres
 
-Tap genre chips to mix up to 5 at once; each search picks one of them at random, so they share airtime evenly. **Any** clears the selection.
-Tap **+ EDIT** at the end of the genre row to remove genres or add sub-genres.
+New listeners are first asked what they want to hear (a genre, then optionally a style) and start with that plus related genres. Tap genre chips to mix up to 5 at once; each search picks one of them at random, so they share airtime evenly. **Any** clears the selection.
+Tap the small **EDIT** button at the end of the genre row to remove genres or add sub-genres.
 The list is saved in the browser. To add sub-genres to the menu, edit `CATALOG` in
 `public/app.js`; main genres and their tags live in `lib/config.js`.
 
