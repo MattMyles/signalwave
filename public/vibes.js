@@ -70,7 +70,7 @@
       color: Math.random() < 0.5 ? '#00f0ff' : '#b84dff', hit: 0,
     });
   }
-  const UFO_LINES = ['> CONTACT // XENO SIGNAL', '> UNIDENTIFIED LISTENER', '> THEY LIKE THIS SONG', '> ABDUCTING BASSLINE…', '> GREETINGS, EARTH DJ', '> TRANSMISSION INTERCEPTED'];
+  const UFO_LINES = ['> GALACTIC REQUEST LINE OPEN', '> DISCO DEPLOYED', '> NOW SPINNING FOR EARTH', '> THIS ONE GOES OUT TO EARTH', '> GREETINGS FROM THE ANDROMEDA TOP 40', '> TAKE ME TO YOUR DJ'];
   function spawnUfo(now) {
     const fromLeft = Math.random() < 0.5;
     const hoverX = w / 2 + rand(-w * 0.18, w * 0.18);
@@ -78,7 +78,8 @@
     ufo = {
       x: fromLeft ? -80 : w + 80, y: hoverY - 60,
       hx: hoverX, hy: hoverY, exitX: fromLeft ? w + 120 : -120, exitY: -80,
-      phase: 'in', t: 0, born: now, beam: 0, wob: rand(0, TAU), lights: 0,
+      phase: 'in', t: 0, born: now, drop: 0, spin: 0, wob: rand(0, TAU), lights: 0,
+      spots: Array.from({ length: 12 }, (_, i) => ({ a: (i / 12) * TAU + rand(-0.2, 0.2), d: rand(0.3, 1), c: pick(NEON) })),
     };
   }
   function say(text, x, y, color) { texts.push({ text, x, y, color, t: 0 }); }
@@ -92,6 +93,7 @@
     const lv = levels();
     if (lv.beat) {
       pulse = 1;
+      if (ufo) ufo.spots.forEach((p) => { if (Math.random() < 0.5) p.c = pick(NEON); });
       if (rings.length < 4) rings.push({ r: Math.min(w, h) * 0.28, a: 0.55 });
       if (ufo) ufo.lights = 1;
       // Ships on screen fire on the beat.
@@ -194,7 +196,7 @@
       ctx.restore();
     }
 
-    // The alien encounter: flies in, hovers and beams the globe in time with the music, then leaves.
+    // The alien encounter: a disco-loving UFO flies in, drops a mirror ball for a song, then leaves.
     if (ufo) {
       const u = ufo;
       u.t += dt; u.wob += dt * 2.2; u.lights = Math.max(0, u.lights - dt * 3);
@@ -202,23 +204,61 @@
         u.x += (u.hx - u.x) * Math.min(1, dt * 1.6); u.y += (u.hy - u.y) * Math.min(1, dt * 1.6);
         if (Math.hypot(u.hx - u.x, u.hy - u.y) < 4) { u.phase = 'hover'; u.t = 0; say(pick(UFO_LINES), u.hx, u.hy - 40, '#39ff14'); }
       } else if (u.phase === 'hover') {
-        u.beam = Math.min(1, u.beam + dt * 2);
-        if (u.t > 7) { u.phase = 'out'; u.t = 0; }
+        u.drop = Math.min(1, u.drop + dt * 0.9); // lower the disco ball
+        if (u.t > 9) { u.phase = 'reel'; u.t = 0; }
+      } else if (u.phase === 'reel') {
+        u.drop = Math.max(0, u.drop - dt * 1.2); // wind it back up before leaving
+        if (u.drop === 0) { u.phase = 'out'; u.t = 0; }
       } else {
-        u.beam = Math.max(0, u.beam - dt * 4);
         const k = Math.min(1, u.t / 1.2);
         u.x += (u.exitX - u.x) * k * dt * 4; u.y += (u.exitY - u.y) * k * dt * 4;
         if (u.t > 2.5) ufo = null;
       }
       const ux = u.x + Math.sin(u.wob) * 6, uy = u.y + Math.cos(u.wob * 1.3) * 4;
-      if (u.beam > 0) {
-        const len = Math.max(40, cy - uy);
-        const spread = 60 + lv.bass * 50;
-        const g = ctx.createLinearGradient(ux, uy, ux, uy + len);
-        g.addColorStop(0, 'rgba(57,255,20,0.5)'); g.addColorStop(1, 'rgba(57,255,20,0)');
-        ctx.globalAlpha = u.beam * (0.45 + lv.bass * 0.55);
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.moveTo(ux - 10, uy + 6); ctx.lineTo(ux + 10, uy + 6); ctx.lineTo(ux + spread, uy + len); ctx.lineTo(ux - spread, uy + len); ctx.closePath(); ctx.fill();
+      // The disco ball hangs from the saucer, spins, and throws coloured spots in time with the music.
+      u.spin += dt * (0.6 + lv.energy * 1.6);
+      if (u.drop > 0) {
+        const ease = u.drop * u.drop * (3 - 2 * u.drop);
+        const bx = ux, by = uy + 12 + ease * Math.min(150, Math.max(70, (cy - uy) * 0.55));
+        const br = 13;
+        ctx.globalAlpha = 0.7; ctx.strokeStyle = '#d8f6ff'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(ux, uy + 8); ctx.lineTo(bx, by - br); ctx.stroke();
+        if (u.drop > 0.6) {
+          // Light spots sweep around as the ball turns; they flare on the beat.
+          const glow = ((u.drop - 0.6) / 0.4) * (0.35 + lv.bass * 0.65);
+          const reach = Math.min(w, h) * 0.75;
+          u.spots.forEach((p) => {
+            const a = p.a + u.spin;
+            const sx = bx + Math.cos(a) * p.d * reach, sy = by + Math.sin(a) * p.d * reach * 0.75;
+            ctx.globalAlpha = glow * 0.18;
+            ctx.strokeStyle = p.c; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(sx, sy); ctx.stroke();
+            ctx.globalAlpha = glow;
+            ctx.fillStyle = p.c;
+            ctx.beginPath(); ctx.arc(sx, sy, 3 + lv.bass * 5 + pulse * 3, 0, TAU); ctx.fill();
+            ctx.globalAlpha = glow * 0.25;
+            ctx.beginPath(); ctx.arc(sx, sy, 10 + lv.bass * 12, 0, TAU); ctx.fill();
+          });
+        }
+        // The ball, with mirror tiles that scroll as it spins.
+        ctx.globalAlpha = 1; ctx.fillStyle = '#1a2230';
+        ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.fill();
+        ctx.save();
+        ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.clip();
+        const off = ((u.spin * 8) % 4 + 4) % 4;
+        for (let row = -3; row <= 3; row++) {
+          const ry = by + row * 4;
+          for (let col = -4; col <= 4; col++) {
+            const tx = bx + col * 4 - off + 2;
+            const lit = Math.sin(col * 1.7 + row * 2.3 + u.spin * 5) > 0.55;
+            ctx.globalAlpha = lit ? 0.9 : 0.35;
+            ctx.fillStyle = lit ? (row + col) % 3 === 0 ? '#00f0ff' : (row + col) % 3 === 1 ? '#ff3ec8' : '#ffffff' : '#8fa3b8';
+            ctx.fillRect(tx - 1.5, ry - 1.5, 3, 3);
+          }
+        }
+        ctx.restore();
+        ctx.globalAlpha = 0.9; ctx.strokeStyle = '#d8f6ff'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.stroke();
       }
       ctx.globalAlpha = 1;
       // Dome with a little alien inside.
