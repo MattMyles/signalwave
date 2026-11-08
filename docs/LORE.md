@@ -20,7 +20,7 @@ However, the hatred of the alien species that caused this destruction still boil
 
 Thankfully the underwater cables for Earth's internet network were mostly intact, and over the period of 20 years, a new network was established from scrap parts found in the devastation.
 
-Music was thought to be an important factor to aid in the healing process of Neo-Earth citizens, so an organization was created called the NESE (Neo//Earth Signal Engineers Core). They set up the infrastructure to stream music around the planet for everyone to listen to, and heal with.
+Music was thought to be an important factor to aid in the healing process of Neo-Earth citizens, so an organization was created called the NESE (Neo//Earth Signal Engineers Corps). They set up the infrastructure to stream music around the planet for everyone to listen to, and heal with.
 
 ## The listener
 
@@ -34,6 +34,8 @@ Music was thought to be an important factor to aid in the healing process of Neo
 
 - Three advanced alien species fought the near apocalyptic war against Earth. Their names are still to be decided: the first species' name will start with a "C", the next with a "Y" and the last with an "M".
 - Nearly all Neo//Earth citizens still hate the alien species that caused the destruction.
+- **The K species (the disco-ball visitors in vibe mode):** a 4th alien species, name starting with "K". They are trying to protect Earth as Neo//Earth rebuilds, while listening to the righteous tracks the Neo//Earthlings are broadcasting to keep the morale and vibes high.
+- Neo//Earth doesn't know what's going on in space, because they haven't rebuilt that technology yet; they don't know the K aliens are protecting them.
 
 ## Ships and asteroids
 
@@ -46,7 +48,7 @@ Music was thought to be an important factor to aid in the healing process of Neo
 *Cities, regions, companies, crews, rival broadcasters...*
 
 - **The elected governing body:** declared that "Earth" existed no longer and renamed the planet Neo-Earth.
-- **NESE (Neo//Earth Signal Engineers Core):** created to use music to help Neo-Earth citizens heal; set up the infrastructure to stream music around the planet for everyone.
+- **NESE (Neo//Earth Signal Engineers Corps):** created to use music to help Neo-Earth citizens heal; set up the infrastructure to stream music around the planet for everyone.
 
 ## Words and phrases
 
@@ -56,7 +58,8 @@ Music was thought to be an important factor to aid in the healing process of Neo
 |---|---|
 | Neo-Earth (also Neo//Earth, Neo // Earth) | The planet's name since the war; "Earth" officially existed no longer |
 | Earth Two / Bad Earth | What Neo-Earth is called by individuals so impacted by their injuries that they have trouble processing, depending on their level of brain function |
-| NESE | Neo//Earth Signal Engineers Core, the organization that streams music around the planet |
+| NESE | Neo//Earth Signal Engineers Corps, the organization that streams music around the planet |
+| Neo//Earthlings | The people of Neo-Earth |
 
 ## Easter eggs and secrets
 
@@ -69,6 +72,8 @@ Music was thought to be an important factor to aid in the healing process of Neo
 *Things not decided yet. Claude may list questions here when Matt asks, but never answers them itself.*
 
 - Names of the three alien species (starting with C, Y and M).
+- Name of the 4th species, the protectors (starting with K).
+- Whose ships fly past in vibe mode, and why they shoot asteroids.
 
 ## Lore log
 
@@ -76,6 +81,7 @@ Music was thought to be an important factor to aid in the healing process of Neo
 
 - 2026-11-08: Document started (empty sections).
 - 2026-11-08: The world after the war with three alien species; the rename to Neo-Earth; the rebuilt network and the NESE; vocabulary (Neo-Earth, Earth Two / Bad Earth, NESE).
+- 2026-11-08: NESE is the Signal Engineers Corps (was "Core"); the K species, the disco-ball visitors who secretly protect Neo-Earth; Neo//Earthlings added to vocabulary.
 
 ---
 
