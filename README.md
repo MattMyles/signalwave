@@ -2,6 +2,9 @@
 
 *ER = Earth Radio.*
 
+> **Name note:** "Signal Wave" overlaps with Signal Wave Radio (a UK online station). Before
+> launching in an app store or making money from this, rename it: see [docs/RENAMING.md](docs/RENAMING.md).
+
 Random live music radio from a random city on Earth, on a neon globe.
 
 Every station is checked before it plays: it must be music (no talk, news or
