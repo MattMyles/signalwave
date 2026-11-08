@@ -14,7 +14,7 @@
   let canvas, ctx, w = 0, h = 0, dpr = 1;
   let running = false, raf = 0, last = 0;
   let levels = () => ({ bass: 0, energy: 0, beat: false });
-  let stars = [], ships = [], rocks = [], bolts = [], rings = [], ufo = null, texts = [];
+  let stars = [], ships = [], rocks = [], bolts = [], rings = [], debris = [], flashes = [], ufo = null, texts = [];
   let nextShip = 0, nextRock = 0, nextUfo = 0, pulse = 0;
 
   function resize() {
@@ -61,14 +61,38 @@
     const c = crossing(80);
     const ang = Math.atan2(c.ty - c.y, c.tx - c.x);
     const speed = rand(25, 70);
-    const r = rand(10, 34);
+    rocks.push(makeRock(c.x, c.y, Math.cos(ang) * speed, Math.sin(ang) * speed, rand(12, 34)));
+  }
+  function makeRock(x, y, vx, vy, r) {
     const n = 9 + ((Math.random() * 4) | 0);
-    rocks.push({
-      x: c.x, y: c.y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+    return {
+      x, y, vx, vy,
       r, rot: rand(0, TAU), spin: rand(-0.8, 0.8),
       shape: Array.from({ length: n }, (_, i) => ({ a: (i / n) * TAU, d: rand(0.68, 1.05) })),
       color: Math.random() < 0.5 ? '#00f0ff' : '#b84dff', hit: 0,
-    });
+    };
+  }
+
+  // A laser hit: big rocks crack into two smaller ones, small ones are vaporised.
+  function explode(r, bolt) {
+    flashes.push({ x: r.x, y: r.y, r: r.r, t: 0, c: r.color });
+    const shards = Math.round(8 + r.r / 2.5);
+    for (let k = 0; k < shards; k++) {
+      const a = rand(0, TAU), sp = rand(40, 200) * (0.6 + r.r / 40);
+      debris.push({
+        x: r.x, y: r.y, vx: Math.cos(a) * sp + r.vx, vy: Math.sin(a) * sp + r.vy,
+        len: rand(2, r.r * 0.45), rot: rand(0, TAU), spin: rand(-8, 8),
+        life: rand(0.6, 1.3), max: 1.3, c: Math.random() < 0.35 ? '#fcee0a' : r.color, spark: Math.random() < 0.4,
+      });
+    }
+    if (r.r > 20) {
+      const a = Math.atan2(bolt.vy, bolt.vx) + Math.PI / 2;
+      for (const side of [-1, 1]) {
+        const v = rand(30, 70);
+        rocks.push(makeRock(r.x + Math.cos(a) * side * r.r * 0.4, r.y + Math.sin(a) * side * r.r * 0.4,
+          r.vx + Math.cos(a) * side * v, r.vy + Math.sin(a) * side * v, r.r * rand(0.45, 0.6)));
+      }
+    }
   }
   const UFO_LINES = ['> GALACTIC REQUEST LINE OPEN', '> DISCO DEPLOYED', '> NOW SPINNING FOR EARTH', '> THIS ONE GOES OUT TO EARTH', '> GREETINGS FROM THE ANDROMEDA TOP 40', '> TAKE ME TO YOUR DJ'];
   function spawnUfo(now) {
@@ -96,9 +120,18 @@
       if (ufo) ufo.spots.forEach((p) => { if (Math.random() < 0.5) p.c = pick(NEON); });
       if (rings.length < 4) rings.push({ r: Math.min(w, h) * 0.28, a: 0.55 });
       if (ufo) ufo.lights = 1;
-      // Ships on screen fire on the beat.
+      // Ships on screen fire on the beat, aiming at a nearby asteroid when there is one.
       ships.forEach((s) => {
-        if (s.x > 0 && s.x < w && Math.random() < 0.5) {
+        if (s.x < 0 || s.x > w) return;
+        let target = null, best = 480;
+        rocks.forEach((r) => {
+          const d = Math.hypot(r.x - s.x, r.y - s.y);
+          if (d < best && r.x > -20 && r.x < w + 20) { best = d; target = r; }
+        });
+        if (target && Math.random() < 0.7) {
+          const a = Math.atan2(target.y - s.y, target.x - s.x) + rand(-0.06, 0.06);
+          bolts.push({ x: s.x, y: s.y, vx: Math.cos(a) * 720, vy: Math.sin(a) * 720, c: s.color, life: 0.9 });
+        } else if (Math.random() < 0.4) {
           bolts.push({ x: s.x, y: s.y, vx: Math.cos(s.ang) * 720, vy: Math.sin(s.ang) * 720, c: s.color, life: 0.9 });
         }
       });
@@ -108,7 +141,7 @@
     pulse = Math.max(0, pulse - dt * 3.5);
 
     if (now > nextShip) { spawnShips(now); nextShip = now + rand(3500, 8000) * (1.2 - lv.energy * 0.6); }
-    if (now > nextRock && rocks.length < 4) { spawnRock(); nextRock = now + rand(5000, 11000); }
+    if (now > nextRock && rocks.length < 4) { spawnRock(); nextRock = now + rand(3500, 8000); }
     if (!ufo && now > nextUfo) { spawnUfo(now); nextUfo = now + rand(26000, 48000); }
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -159,15 +192,48 @@
       ctx.globalAlpha = 0.08 + r.hit * 0.2; ctx.fillStyle = r.color; ctx.fill();
     }
 
-    // Laser bolts; they light up any asteroid they pass through.
+    // Laser bolts; an asteroid they hit blows apart.
     for (let i = bolts.length - 1; i >= 0; i--) {
       const b = bolts[i];
       b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
       if (b.life <= 0) { bolts.splice(i, 1); continue; }
-      rocks.forEach((r) => { if (Math.hypot(r.x - b.x, r.y - b.y) < r.r) { r.hit = 1; b.life = 0; } });
+      for (let k = rocks.length - 1; k >= 0; k--) {
+        const r = rocks[k];
+        if (Math.hypot(r.x - b.x, r.y - b.y) < r.r) { rocks.splice(k, 1); explode(r, b); b.life = 0; break; }
+      }
+      if (b.life <= 0) continue;
       ctx.globalAlpha = Math.min(1, b.life * 2);
       ctx.strokeStyle = b.c; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx * 0.03, b.y - b.vy * 0.03); ctx.stroke();
+    }
+
+    // Explosions: a bright flash and shockwave, then tumbling shards and sparks.
+    for (let i = flashes.length - 1; i >= 0; i--) {
+      const f = flashes[i];
+      f.t += dt;
+      if (f.t > 0.6) { flashes.splice(i, 1); continue; }
+      const k = f.t / 0.6;
+      ctx.globalAlpha = (1 - k) * 0.9;
+      ctx.fillStyle = '#fff6c0';
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (0.6 + k * 0.8) * (1 - k * 0.7), 0, TAU); ctx.fill();
+      ctx.strokeStyle = f.c; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (1 + k * 3), 0, TAU); ctx.stroke();
+    }
+    for (let i = debris.length - 1; i >= 0; i--) {
+      const d = debris[i];
+      d.life -= dt;
+      if (d.life <= 0) { debris.splice(i, 1); continue; }
+      d.x += d.vx * dt; d.y += d.vy * dt; d.vx *= 0.985; d.vy *= 0.985; d.rot += d.spin * dt;
+      ctx.globalAlpha = Math.min(1, d.life / 0.5);
+      if (d.spark) {
+        ctx.fillStyle = d.c; ctx.fillRect(d.x - 1, d.y - 1, 2, 2);
+      } else {
+        ctx.strokeStyle = d.c; ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(d.x - Math.cos(d.rot) * d.len, d.y - Math.sin(d.rot) * d.len);
+        ctx.lineTo(d.x + Math.cos(d.rot) * d.len, d.y + Math.sin(d.rot) * d.len);
+        ctx.stroke();
+      }
     }
 
     // Ships with glowing engine trails.
@@ -315,7 +381,7 @@
       running = false;
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
-      ships = []; rocks = []; bolts = []; rings = []; texts = []; ufo = null;
+      ships = []; rocks = []; bolts = []; rings = []; debris = []; flashes = []; texts = []; ufo = null;
       if (ctx) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); }
     },
   };

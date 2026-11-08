@@ -567,12 +567,48 @@
       if (beat) lastBeat = now;
       return { bass, energy, beat };
     }
-    // No access to the audio data (iPhone, or a stream without CORS): fake a groove at about 116 BPM.
-    const period = 517;
-    const beat = now - lastBeat > period;
-    if (beat) lastBeat = now - ((now - lastBeat) % period);
-    const since = (now - lastBeat) / period;
-    return { bass: Math.max(0, 0.75 - since * 0.8), energy: 0.35 + 0.15 * Math.sin(now / 1900), beat };
+    // No access to the audio data (iPhone, or a stream without CORS): fake a
+    // groove at the tempo typical of the station's genre.
+    const groove = grooveFor(state.current);
+    const period = 60000 / groove.bpm;
+    let beat, since;
+    if (groove.offset != null) {
+      // The hidden track is a known file, so its beats are locked to the playback position.
+      const pos = audio.currentTime * 1000 - groove.offset;
+      const n = Math.floor(pos / period);
+      beat = pos >= 0 && n !== lastBeatN;
+      lastBeatN = n;
+      since = pos < 0 ? 1 : (pos - n * period) / period;
+    } else {
+      beat = now - lastBeat > period;
+      if (beat) lastBeat = now - ((now - lastBeat) % period);
+      since = (now - lastBeat) / period;
+    }
+    const base = groove.energy;
+    return { bass: Math.max(0, (0.45 + base) - since * 0.8), energy: base + 0.12 * Math.sin(now / 1900), beat };
+  }
+  let lastBeatN = -1;
+
+  // Typical tempo (BPM) and liveliness for a station, guessed from its genre and tags.
+  // Most specific styles first, so "deep house" matches house before anything broader.
+  const GROOVES = [
+    [/drum ?(and|&|n) ?bass|dnb|jungle/, 174, 0.55], [/dubstep/, 140, 0.5], [/hardstyle|hardcore|gabber/, 150, 0.55],
+    [/psy|trance/, 138, 0.5], [/techno/, 130, 0.5], [/house|edm|dance|club|electro/, 124, 0.45],
+    [/synthwave|retrowave|outrun/, 108, 0.4], [/disco/, 120, 0.45], [/funk/, 108, 0.42],
+    [/metal/, 150, 0.55], [/punk/, 165, 0.55], [/trap/, 140, 0.45], [/hip.?hop|rap/, 90, 0.42],
+    [/r&b|rnb|soul/, 95, 0.35], [/reggaeton/, 95, 0.45], [/reggae|dub\b|ska/, 75, 0.35],
+    [/salsa|bachata|cumbia|merengue/, 98, 0.42], [/afro/, 105, 0.42], [/latin/, 100, 0.4],
+    [/jazz|blues|swing/, 110, 0.3], [/lounge|chill|lo.?fi|downtempo|smooth/, 85, 0.25],
+    [/ambient|new age|meditation|sleep/, 66, 0.15], [/classical|opera|baroque|piano|orchestra/, 72, 0.18],
+    [/country|folk|bluegrass|americana|celtic/, 112, 0.35], [/rock|alternative|indie|grunge/, 122, 0.45],
+    [/pop|hits|top 40|80s|90s|k-?pop/, 118, 0.42],
+  ];
+  function grooveFor(s) {
+    if (!s) return { bpm: 116, energy: 0.35 };
+    if (s.egg) return { bpm: 132.1, energy: 0.5, offset: 261 }; // measured from the track itself
+    const text = `${s.genre || ''} ${Array.isArray(s.tags) ? s.tags.join(' ') : s.tags || ''}`.toLowerCase();
+    const hit = GROOVES.find(([re]) => re.test(text));
+    return hit ? { bpm: hit[1], energy: hit[2] } : { bpm: 116, energy: 0.35 };
   }
 
   function setVibe(on) {
@@ -582,22 +618,42 @@
     if (on) {
       closeDrawer();
       if (!reduced && window.SignalVibes) window.SignalVibes.start($('fx'), vibeLevels);
-      const root = document.documentElement;
-      if (root.requestFullscreen && !document.fullscreenElement) root.requestFullscreen().catch(() => {});
+      enterFullscreen();
       if (!state.started) start(true);
       if (globe && state.current && !reduced) globe.pointOfView({ altitude: state.current.egg ? 2.6 : 2.0 }, 1200);
     } else {
       if (window.SignalVibes) window.SignalVibes.stop();
-      if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      exitFullscreen();
     }
     setPrevButton();
+  }
+  // Puts the whole browser into full screen. Desktop browsers, Android and iPad
+  // support this (Safari needs the webkit- versions); iPhone Safari doesn't
+  // allow it for web pages, where the home-screen app is the full-screen route.
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  function enterFullscreen() {
+    const root = document.documentElement;
+    if (fsElement()) return;
+    try {
+      const req = root.requestFullscreen ? root.requestFullscreen({ navigationUI: 'hide' }) : root.webkitRequestFullscreen && root.webkitRequestFullscreen();
+      if (req && req.catch) req.catch(() => {});
+    } catch (_) { /* not allowed here */ }
+  }
+  function exitFullscreen() {
+    if (!fsElement()) return;
+    try {
+      const r = document.exitFullscreen ? document.exitFullscreen() : document.webkitExitFullscreen && document.webkitExitFullscreen();
+      if (r && r.catch) r.catch(() => {});
+    } catch (_) { /* ignore */ }
   }
   const inVibe = () => document.body.classList.contains('vibe');
   $('vibeBtn').addEventListener('click', () => setVibe(!inVibe()));
   $('vibePrev').addEventListener('click', () => prev());
   $('vibeNext').addEventListener('click', () => next());
   // Leaving the browser's full screen (Esc, a swipe) leaves vibe mode too.
-  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && inVibe()) setVibe(false); });
+  const onFsChange = () => { if (!fsElement() && inVibe()) setVibe(false); };
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('webkitfullscreenchange', onFsChange);
 
   /* ---------- Globe ---------- */
   const globeEl = $('globe');
