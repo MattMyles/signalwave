@@ -101,7 +101,7 @@ What the app says today, so it's clear what the lore would change. File names ar
 
 **Splash page** (`public/index.html`): logo NEO // EARTH ^RADIO; tagline "Live music radio from a random city on Neo-Earth. Neo-Earth music only."; boot log "> LOADING WORLD GRID…" then "> WORLD GRID ONLINE // READY"; button "JACK IN".
 
-**Link previews** (`public/index.html` meta tags, `public/og-image.png`): still "Live music radio from a random city. Earth music only." / "> EARTH MUSIC ONLY_".
+**Link previews** (`public/index.html` meta tags, `public/og-image.png`): "Live music radio from a random city on Neo-Earth. Neo//Earth music only." / image tagline "> NEO//EARTH MUSIC ONLY_".
 
 **Vibe-mode visitors: the Kryx** (`UFO_LINES` in `public/vibes.js`), one line shown when the UFO arrives and drops its disco ball; the ball's light orbs also fire at asteroids:
 - > GALACTIC REQUEST LINE OPEN, NEXT TRACK: PROTECT NEO//EARTH

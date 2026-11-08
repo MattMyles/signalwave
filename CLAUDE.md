@@ -112,6 +112,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Lore skills: `/neoearth-lore` (summary), `/neoearth-lore-update` (new entries), `/neoearth-lore-verify` (continuity check); `docs/LORE.md` gained Open questions and Lore log sections.
 - Splash tagline now "Live music radio from a random city on Neo-Earth. Neo-Earth music only."; started `docs/LORE.md` for Matt's Neo-Earth lore (build 19).
 - First lore written (the war, the NESE, the four species); vibe-mode UFO is now the Kryx with new radio-chatter lines, and its disco-ball orbs shoot asteroids (build 20).
+- Link previews and share image now say "Neo//Earth music only" (build 21).
 
 Add a line here when shipping something notable.
 
