@@ -11,6 +11,7 @@ Random live music radio from a random city on Earth, played over a neon cyberpun
 - No build step and no npm dependencies: plain HTML/CSS/JS. Vendor libraries are bundled in `public/vendor/` (no CDNs).
 - Visual style: black background, neon yellow `#fcee0a`, cyan `#00f0ff`, magenta `#ff2a6d` / pink `#ff3ec8`, green `#39ff14`; Chakra Petch display font, Share Tech Mono for HUD text; terminal-style status messages like `> LINK ESTABLISHED`. CSS tokens live at the top of `styles.css`.
 - Write commit messages in plain language describing what changed for the user.
+- **In-world text follows the lore.** Before writing or changing splash copy, status messages, vibe-mode alien lines (`UFO_LINES` in `vibes.js`), toasts or Easter eggs, read [docs/LORE.md](docs/LORE.md) (Matt's Neo-Earth lore; he writes it, Claude doesn't add canon). Keep its "Where lore shows up" list current when in-world text changes.
 
 ## The name
 
@@ -107,6 +108,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Export moved under the saved list; pick which stations to export, or all (build 16).
 - "Add a shared station" renamed "Add received signal" (build 17).
 - Rebranded to **NEO // EARTH** (Neo Earth Radio), domain neoearthradio.com; new link-preview image; export file now `neo-earth-radio-favorites.json` (build 18).
+- Splash tagline now "Live music radio from a random city on Neo-Earth. Neo-Earth music only."; started `docs/LORE.md` for Matt's Neo-Earth lore (build 19).
 
 Add a line here when shipping something notable.
 
