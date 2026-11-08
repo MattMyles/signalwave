@@ -148,6 +148,7 @@
     setLive(true);
     armPlayRecord();
     const s = state.current;
+    if (s && s.egg) { status('> LINK HACKED // STREAM CORRUPTED // JAM IMMINENT'); $('statusline').classList.add('hacked'); return; }
     if (s) status(`> LINK ESTABLISHED // ${s.bitrate ? `${s.bitrate} kbps ` : ''}${(s.codec || 'stream').toUpperCase()}`);
   }
 
@@ -465,6 +466,7 @@
     const el = $('statusText');
     el.textContent = text;
     $('statusline').classList.toggle('warn', warn);
+    $('statusline').classList.remove('hacked');
     fitScroll(el);
   }
   function setBusy(on) {
