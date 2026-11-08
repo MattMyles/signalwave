@@ -120,7 +120,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - ALPHA tag on all branding: logos, page titles, splash, admin, share image, sign-in email (build 23).
 - Sign-in email now welcomes people to the Neo//Earth Signal Engineers Corps (template only; Matt pastes it into Supabase).
 - Now-playing panel label "STATION" is now "SIGNAL" (build 24).
-- Now-playing panel background is black at 75% opacity (build 25).
+- Now-playing panel background is black at 65% opacity (75% in build 25, 65% from build 26).
 
 Add a line here when shipping something notable.
 
