@@ -21,7 +21,7 @@
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     w = canvas.clientWidth; h = canvas.clientHeight;
     canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
-    if (!stars.length) stars = Array.from({ length: Math.round(Math.min(140, (w * h) / 7000)) }, () => newStar(true));
+    if (!stars.length) stars = Array.from({ length: Math.round(Math.min(90, (w * h) / 11000)) }, () => newStar(true));
   }
   function newStar(anywhere) {
     // Stars stream outward from the centre, like a slow warp.
@@ -45,7 +45,7 @@
     const speed = rand(170, 300);
     const color = pick(NEON);
     const size = rand(9, 15);
-    const count = Math.random() < 0.3 ? 3 : 1; // sometimes a squadron
+    const count = Math.random() < 0.2 ? 3 : 1; // sometimes a squadron
     for (let i = 0; i < count; i++) {
       // Formation: a V trailing the leader.
       const back = i === 0 ? 0 : 34, side = i === 0 ? 0 : (i === 1 ? -26 : 26);
@@ -76,7 +76,7 @@
   // A laser hit: big rocks crack into two smaller ones, small ones are vaporised.
   function explode(r, bolt) {
     flashes.push({ x: r.x, y: r.y, r: r.r, t: 0, c: r.color });
-    const shards = Math.round(8 + r.r / 2.5);
+    const shards = Math.round(6 + r.r / 3.5);
     for (let k = 0; k < shards; k++) {
       const a = rand(0, TAU), sp = rand(40, 200) * (0.6 + r.r / 40);
       debris.push({
@@ -130,21 +130,19 @@
           const d = Math.hypot(r.x - s.x, r.y - s.y);
           if (d < best && r.x > -20 && r.x < w + 20) { best = d; target = r; }
         });
-        if (target && Math.random() < 0.7) {
+        if (target && Math.random() < 0.45) {
           const a = Math.atan2(target.y - s.y, target.x - s.x) + rand(-0.06, 0.06);
           bolts.push({ x: s.x, y: s.y, vx: Math.cos(a) * 720, vy: Math.sin(a) * 720, c: s.color, life: 0.9 });
-        } else if (Math.random() < 0.4) {
+        } else if (Math.random() < 0.15) {
           bolts.push({ x: s.x, y: s.y, vx: Math.cos(s.ang) * 720, vy: Math.sin(s.ang) * 720, c: s.color, life: 0.9 });
         }
       });
-      // A loud beat can call in ships early.
-      if (lv.bass > 0.55 && now > nextShip - 2500) nextShip = now;
     }
     pulse = Math.max(0, pulse - dt * 3.5);
 
-    if (now > nextShip) { spawnShips(now); nextShip = now + rand(3500, 8000) * (1.2 - lv.energy * 0.6); }
-    if (now > nextRock && rocks.length < 4) { spawnRock(); nextRock = now + rand(3500, 8000); }
-    if (!ufo && now > nextUfo) { spawnUfo(now); nextUfo = now + rand(26000, 48000); }
+    if (now > nextShip) { spawnShips(now); nextShip = now + rand(7000, 14000) * (1.2 - lv.energy * 0.4); }
+    if (now > nextRock && rocks.length < 3) { spawnRock(); nextRock = now + rand(7000, 13000); }
+    if (!ufo && now > nextUfo) { spawnUfo(now); nextUfo = now + rand(40000, 70000); }
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
@@ -375,7 +373,7 @@
       if (running) return;
       running = true; last = 0;
       const now = performance.now();
-      nextShip = now + 1200; nextRock = now + 600; nextUfo = now + rand(9000, 16000);
+      nextShip = now + 1200; nextRock = now + 600; nextUfo = now + rand(15000, 25000);
       window.addEventListener('resize', resize);
       raf = requestAnimationFrame(frame);
     },
