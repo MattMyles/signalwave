@@ -113,6 +113,8 @@ What the app says today, so it's clear what the lore would change. File names ar
 - > GREETINGS FROM KRYX
 - > DON'T HANG THE DJ!
 
+**Now-playing panel** (`public/index.html`): labels NOW PLAYING · SIGNAL (the station name) · GENRE · CITY · COUNTRY.
+
 **Status line** (`public/app.js`): > SCANNING FREQUENCIES… · > LINK ESTABLISHED // 128 kbps MP3 · > SIGNAL LOST — RETUNING… · > SIGNAL STALLED · > STILL SCANNING — WIDENING SEARCH… · > RETUNING TO SAVED SIGNAL… · > LINK PAUSED · > TAP PLAY TO START AUDIO · > STATION HIDDEN — RETUNING… · > SHARED SIGNAL RECEIVED · > GLOBE OFFLINE — AUDIO ONLY
 
 **Saved panel and toasts**: SAVED SIGNALS · ADD RECEIVED SIGNAL · > SIGNAL SAVED · > SIGNAL REMOVED · > SIGNALS SYNCED · > THIS SIGNAL CANNOT BE CAPTURED
