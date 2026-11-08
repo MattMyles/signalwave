@@ -1056,7 +1056,7 @@
 
   async function shareStation(f) {
     const url = stationLink(f.uuid);
-    const text = `Listen to ${f.name} from ${f.city} on Signal Wave`;
+    const text = `Listen to ${f.name} from ${f.city} on Signal Wave ER`;
     const canShare = typeof navigator.share === 'function';
     if (await copyText(url)) {
       toast('> LINK COPIED', canShare ? { label: 'SHARE…', fn: () => navigator.share({ title: f.name, text, url }).catch(() => {}) } : null);
@@ -1155,7 +1155,7 @@
       return;
     }
     const m = UUID_RE.exec($('addLink').value);
-    if (!m) { addMsg('Paste a Signal Wave station link (it contains ?station=…).', true); return; }
+    if (!m) { addMsg('Paste a Signal Wave ER station link (it contains ?station=…).', true); return; }
     const btn = $('addForm').querySelector('button');
     btn.disabled = true;
     addMsg('Looking up the station…');
@@ -1208,7 +1208,7 @@
       saveFavs();
       toast(`> IMPORTED ${added} SIGNAL${added === 1 ? '' : 'S'}`);
     } catch (_) {
-      toast('> IMPORT FAILED — NOT A SIGNAL WAVE FILE');
+      toast('> IMPORT FAILED — NOT A SIGNAL WAVE ER FILE');
     }
   });
 

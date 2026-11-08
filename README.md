@@ -1,4 +1,6 @@
-# Signal Wave
+# Signal Wave ER
+
+*ER = Earth Radio.*
 
 Random live music radio from a random city on Earth, on a neon globe.
 
@@ -69,7 +71,7 @@ With it, a **Sync across devices** section appears at the bottom of the Saved pa
    production branch. Otherwise open Supabase → SQL Editor, paste that file, and run it.
 2. **Put the code in the sign-in email.** Supabase → Authentication → Emails →
    *Magic Link* template. Add the code, for example:
-   `<p>Your Signal Wave code: <strong>{{ .Token }}</strong></p>`
+   `<p>Your Signal Wave ER code: <strong>{{ .Token }}</strong></p>`
    (A code works inside the iPhone home-screen app; a link would open Safari instead.)
 3. **Set the site address.** Authentication → URL Configuration → Site URL =
    your Vercel address.
@@ -101,7 +103,7 @@ can see it.
 
 The **Station checks** panel needs one more migration,
 `supabase/migrations/20261107190000_station_checks.sql`. It shows Radio Browser's
-total, how many stations Signal Wave has checked, how many passed, and why the
+total, how many stations Signal Wave ER has checked, how many passed, and why the
 rest were turned away (each station's latest result).
 
 How it counts: a play is recorded after 30 seconds of listening. Listeners are

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Signal Wave Dashboard</title>
+  <title>Signal Wave ER Dashboard</title>
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#05020f">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -41,6 +41,7 @@
     header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; }
     .brand { font-weight: 700; letter-spacing: 0.18em; font-size: 18px; color: var(--yellow); }
     .brand b { color: var(--pink); }
+    .brand .er { font-size: 0.5em; letter-spacing: 0.08em; vertical-align: super; margin-left: 0.25em; }
     .brand span { color: var(--dim); font-weight: 600; letter-spacing: 0.22em; font-size: 13px; margin-left: 8px; }
     .who { display: flex; align-items: center; gap: 10px; color: var(--dim); font-size: 13px; flex-wrap: wrap; }
     .btn { background: transparent; border: 1px solid var(--line); color: var(--cyan); padding: 7px 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.14em; cursor: pointer; min-height: 34px; }
@@ -110,7 +111,7 @@
 <body>
   <div class="wrap">
     <header>
-      <div class="brand">SIGNAL<b>//</b>WAVE<span>DASHBOARD</span></div>
+      <div class="brand">SIGNAL<b>//</b>WAVE<sup class="er">ER</sup><span>DASHBOARD</span></div>
       <div class="who" id="who" hidden>
         <span id="whoEmail"></span>
         <span class="mono" id="updated"></span>
