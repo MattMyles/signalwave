@@ -34,11 +34,14 @@ Music was thought to be an important factor to aid in the healing process of Neo
 
 *Who are they, where are they from, why do they care about Neo-Earth music? How do they talk: tone, slang, catchphrases? Anything they would never say?*
 
-- Three advanced alien species fought the near apocalyptic war against Earth. Their names are still to be decided: the first species' name will start with a "C", the next with a "Y" and the last with an "M".
+- Three advanced alien species fought the near apocalyptic war against Earth:
+  - **Cynarii:** silicon-based pack hunters with razor-sharp quartz ridges along their spines.
+  - **Yinzosa:** void-adapted organisms that hibernate during travel and awaken to hive-based commands from a central commander.
+  - **Mazaelin:** six-limbed apex predators from a high-gravity jungle moon, sporting dense bone-plated skulls.
 - Nearly all Neo//Earth citizens still hate the alien species that caused the destruction.
-- **The K species (the disco-ball visitors in vibe mode):** a 4th alien species, name starting with "K". They are trying to protect Earth as Neo//Earth rebuilds, while listening to the righteous tracks the Neo//Earthlings are broadcasting to keep the morale and vibes high.
-- Neo//Earth doesn't know what's going on in space, because they haven't rebuilt that technology yet; they don't know the K aliens are protecting them.
-- **How the K aliens talk:** they've heard classic radio lines, like request lines being open, but know they can't access them because the current Earth atmosphere is too volatile to land in. They say these lines to each other as if emulating radio chatter. Example: "GALACTIC REQUEST LINE OPEN, NEXT TRACK: PROTECT NEO//EARTH".
+- **The Krynn (the disco-ball visitors in vibe mode):** energy-beings that must remain in constant motion to prevent their plasma matrices from dissipating. A 4th alien species. They are trying to protect Earth as Neo//Earth rebuilds, while listening to the righteous tracks the Neo//Earthlings are broadcasting to keep the morale and vibes high.
+- Neo//Earth doesn't know what's going on in space, because they haven't rebuilt that technology yet; they don't know the Krynn are protecting them.
+- **How the Krynn talk:** they've heard classic radio lines, like request lines being open, but know they can't access them because the current Earth atmosphere is too volatile to land in. They say these lines to each other as if emulating radio chatter. Example: "GALACTIC REQUEST LINE OPEN, NEXT TRACK: PROTECT NEO//EARTH".
 
 ## Ships and asteroids
 
@@ -63,6 +66,8 @@ Music was thought to be an important factor to aid in the healing process of Neo
 | Earth Two / Bad Earth | What Neo-Earth is called by individuals so impacted by their injuries that they have trouble processing, depending on their level of brain function |
 | NESE | Neo//Earth Signal Engineers Corps, the organization that streams music around the planet |
 | Neo//Earthlings | The people of Neo-Earth |
+| Cynarii, Yinzosa, Mazaelin | The three alien species that fought the war against Earth |
+| Krynn | The 4th species, who secretly protect Neo-Earth (the disco-ball visitors) |
 
 ## Easter eggs and secrets
 
@@ -74,8 +79,6 @@ Music was thought to be an important factor to aid in the healing process of Neo
 
 *Things not decided yet. Claude may list questions here when Matt asks, but never answers them itself.*
 
-- Names of the three alien species (starting with C, Y and M).
-- Name of the 4th species, the protectors (starting with K).
 - Whose ships fly past in vibe mode, and why they shoot asteroids.
 
 ## Lore log
@@ -86,6 +89,7 @@ Music was thought to be an important factor to aid in the healing process of Neo
 - 2026-11-08: The world after the war with three alien species; the rename to Neo-Earth; the rebuilt network and the NESE; vocabulary (Neo-Earth, Earth Two / Bad Earth, NESE).
 - 2026-11-08: NESE is the Signal Engineers Corps (was "Core"); the K species, the disco-ball visitors who secretly protect Neo-Earth; Neo//Earthlings added to vocabulary.
 - 2026-11-08: How the K aliens talk (emulating radio chatter they've overheard); Earth's atmosphere too volatile to land in; radio is the heart of the concept.
+- 2026-11-08: Named and described the four species: Cynarii, Yinzosa, Mazaelin (the invaders) and Krynn (the protectors).
 
 ---
 
