@@ -60,6 +60,13 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 .brand b { color: var(--magenta); font-weight: 700; text-shadow: 0 0 10px rgba(255, 42, 109, 0.7); }
 /* "RADIO" rides small and raised after the name, like a trademark mark. */
 .brand .suffix { font-size: 0.4em; letter-spacing: 0.12em; vertical-align: super; line-height: 0; margin-left: 0.25em; }
+/* "ALPHA" development tag next to the logo */
+.alpha {
+  display: inline-block; vertical-align: middle; margin-left: 8px; padding: 2px 5px 1px;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 400; letter-spacing: 0.16em; line-height: 1.2;
+  color: var(--magenta); border: 1px solid var(--magenta); text-shadow: 0 0 6px rgba(255, 42, 109, 0.6);
+}
+.alpha-boot { align-self: flex-start; margin: -6px 0 0; font-size: 11px; }
 .coords { flex: 1; text-align: center; color: var(--dim); font-size: 12px; letter-spacing: 0.08em; white-space: nowrap; }
 @media (max-width: 520px) { .coords { display: none; } .topbar { justify-content: space-between; } .brand { letter-spacing: 0.12em; } }
 

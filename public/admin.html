@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Neo Earth Radio Dashboard</title>
+  <title>Neo Earth Radio Dashboard (Alpha)</title>
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#05020f">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -41,6 +41,7 @@
     header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; }
     .brand { font-weight: 700; letter-spacing: 0.18em; font-size: 18px; color: var(--yellow); }
     .brand b { color: var(--pink); }
+    .brand .alpha { font-style: normal; font-size: 10px; letter-spacing: 0.16em; color: var(--pink); border: 1px solid var(--pink); padding: 2px 5px; margin-left: 10px; vertical-align: middle; }
     .brand .suffix { font-size: 0.45em; letter-spacing: 0.12em; vertical-align: super; margin-left: 0.25em; }
     .brand span { color: var(--dim); font-weight: 600; letter-spacing: 0.22em; font-size: 13px; margin-left: 8px; }
     .who { display: flex; align-items: center; gap: 10px; color: var(--dim); font-size: 13px; flex-wrap: wrap; }
@@ -111,7 +112,7 @@
 <body>
   <div class="wrap">
     <header>
-      <div class="brand">NEO<b>//</b>EARTH<sup class="suffix">RADIO</sup><span>DASHBOARD</span></div>
+      <div class="brand">NEO<b>//</b>EARTH<sup class="suffix">RADIO</sup><span>DASHBOARD</span><i class="alpha">ALPHA</i></div>
       <div class="who" id="who" hidden>
         <span id="whoEmail"></span>
         <span class="mono" id="updated"></span>

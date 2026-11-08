@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Neo Earth Radio</title>
+  <title>Neo Earth Radio (Alpha)</title>
   <meta name="description" content="Live music radio from a random city on Neo-Earth. Neo//Earth music only. Spin a neon globe and tune in to stations around the world.">
   <!-- Link previews (iMessage, WhatsApp, Slack, social). scripts/build-meta.js
        turns these relative addresses into full ones when Vercel deploys. -->
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="Neo Earth Radio">
-  <meta property="og:title" content="Neo Earth Radio">
+  <meta property="og:site_name" content="Neo Earth Radio (Alpha)">
+  <meta property="og:title" content="Neo Earth Radio (Alpha)">
   <meta property="og:description" content="Live music radio from a random city on Neo-Earth. Neo//Earth music only.">
   <meta property="og:url" content="/">
   <meta property="og:image" content="/og-image.png">
@@ -17,7 +17,7 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="Neo Earth Radio: a neon globe with glowing cities and radio links">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Neo Earth Radio">
+  <meta name="twitter:title" content="Neo Earth Radio (Alpha)">
   <meta name="twitter:description" content="Live music radio from a random city on Neo-Earth. Neo//Earth music only.">
   <meta name="twitter:image" content="/og-image.png">
   <meta name="apple-mobile-web-app-title" content="Neo Earth">
@@ -37,7 +37,7 @@
   <div class="scanlines" aria-hidden="true"></div>
 
   <header class="topbar">
-    <div class="brand" aria-label="Neo Earth Radio">NEO<b>//</b>EARTH<sup class="suffix">RADIO</sup></div>
+    <div class="brand" aria-label="Neo Earth Radio, alpha">NEO<b>//</b>EARTH<sup class="suffix">RADIO</sup><span class="alpha" title="Still in development">ALPHA</span></div>
     <div class="coords mono" id="coords" aria-hidden="true">--.--°  --.--°</div>
     <button class="btn-ghost" id="openFavs" aria-controls="drawer" aria-expanded="false">
       <span class="heart" aria-hidden="true">♥</span> <span id="favLabel">SAVED</span> <span id="favCount" class="mono">0</span><span class="inbox-dot" id="inboxDot" hidden aria-label="Incoming transmissions"></span>
@@ -199,7 +199,8 @@
 
   <div class="boot" id="boot">
     <div class="boot-inner">
-      <div class="brand big" data-text="NEO//EARTH" aria-label="Neo Earth Radio">NEO<b>//</b>EARTH<sup class="suffix">RADIO</sup></div>
+      <div class="brand big" data-text="NEO//EARTH" aria-label="Neo Earth Radio, alpha">NEO<b>//</b>EARTH<sup class="suffix">RADIO</sup></div>
+      <span class="alpha alpha-boot">ALPHA // STILL IN DEVELOPMENT</span>
       <p class="mono boot-log" id="bootLog">&gt; LOADING WORLD GRID…</p>
       <p class="boot-copy">Live music radio from a random city on Neo-Earth. Neo-Earth music only.</p>
       <button class="jack" id="jackIn">JACK IN</button>

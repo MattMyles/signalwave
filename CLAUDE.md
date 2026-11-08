@@ -15,7 +15,7 @@
 
 ## The name
 
-The app is **NEO // EARTH** (full name **Neo Earth Radio**; "radio" is just the descriptor). Logo: `NEO<b>//</b>EARTH<sup class="suffix">RADIO</sup>`, with RADIO small and raised. Home-screen name: "Neo Earth". Domain: **neoearthradio.com** (Matt registered it 2026-11-08). Renamed from "Signal Wave" / "Signal Wave ER" on 2026-11-08 because Signal Wave Radio is an active UK station (ScoobyMedia Group). Internal names stay "signalwave" (only things users never see): GitHub repo, Vercel and Supabase projects, `sw.*` storage keys, the `signal-wave-vNN` cache name, `package.json`, and the export format's `"app": "signal-wave"`. Never rename those.
+The app is **NEO // EARTH** (full name **Neo Earth Radio**; "radio" is just the descriptor). Logo: `NEO<b>//</b>EARTH<sup class="suffix">RADIO</sup>`, with RADIO small and raised, followed by a magenta **ALPHA** tag (`<span class="alpha">`) while the app is in development; titles read "Neo Earth Radio (Alpha)" and the splash shows "ALPHA // STILL IN DEVELOPMENT". Remove these when Matt says it's out of alpha. Home-screen name: "Neo Earth". Domain: **neoearthradio.com** (Matt registered it 2026-11-08). Renamed from "Signal Wave" / "Signal Wave ER" on 2026-11-08 because Signal Wave Radio is an active UK station (ScoobyMedia Group). Internal names stay "signalwave" (only things users never see): GitHub repo, Vercel and Supabase projects, `sw.*` storage keys, the `signal-wave-vNN` cache name, `package.json`, and the export format's `"app": "signal-wave"`. Never rename those.
 
 Name check at the rename: no "Neo Earth Radio" found. There is an iPhone app called **Earth Radio** (Vweeter Limited) that also plays world radio on a 3D globe, so lead with "Neo Earth" / NEO // EARTH in branding and recheck before any App Store launch or monetization. To rename again, follow [docs/RENAMING.md](docs/RENAMING.md) (or the `/neoearth-rename` skill).
 
@@ -117,6 +117,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - First lore written (the war, the NESE, the four species); vibe-mode UFO is now the Kryx with new radio-chatter lines, and its disco-ball orbs shoot asteroids (build 20).
 - Link previews and share image now say "Neo//Earth music only" (build 21).
 - NESE member IDs, NESE Dashboard with ID badge, and transmitting stations to another member's ID with an incoming-transmissions inbox (build 22). Needs migration `20261108070000_nese_members.sql`.
+- ALPHA tag on all branding: logos, page titles, splash, admin, share image, sign-in email (build 23).
 
 Add a line here when shipping something notable.
 
