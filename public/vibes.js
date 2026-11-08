@@ -94,7 +94,15 @@
       }
     }
   }
-  const UFO_LINES = ['> GALACTIC REQUEST LINE OPEN', '> DISCO DEPLOYED', '> NOW SPINNING FOR EARTH', '> THIS ONE GOES OUT TO EARTH', '> GREETINGS FROM THE ANDROMEDA TOP 40', '> TAKE ME TO YOUR DJ'];
+  // The Kryx, Neo-Earth's unseen protectors, trading radio chatter they've overheard (see docs/LORE.md).
+  const UFO_LINES = [
+    '> GALACTIC REQUEST LINE OPEN, NEXT TRACK: PROTECT NEO//EARTH',
+    '> DISCO DEPLOYED',
+    '> NOW SPINNING FOR NEO//EARTH',
+    '> THIS ONE GOES OUT TO NEO//EARTH',
+    '> GREETINGS FROM KRYX',
+    "> DON'T HANG THE DJ!",
+  ];
   function spawnUfo(now) {
     const fromLeft = Math.random() < 0.5;
     const hoverX = w / 2 + rand(-w * 0.18, w * 0.18);
@@ -106,7 +114,19 @@
       spots: Array.from({ length: 12 }, (_, i) => ({ a: (i / 12) * TAU + rand(-0.2, 0.2), d: rand(0.3, 1), c: pick(NEON) })),
     };
   }
-  function say(text, x, y, color) { texts.push({ text, x, y, color, t: 0 }); }
+  function say(text, x, y, color) { texts.push({ text, x, y, color, t: 0, life: 4 + text.length / 30 }); }
+  // Splits a message into lines that fit the screen, breaking after commas and spaces.
+  function wrap(text, maxW) {
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (line && ctx.measureText(test).width > maxW) { lines.push(line); line = word; } else line = test;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
 
   /* ---------- Frame ---------- */
   function frame(now) {
@@ -122,6 +142,22 @@
       beats++;
       if (beats % 4 === 1 && now - lastRing > 1600 && rings.length < 2) { rings.push({ r: Math.min(w, h) * 0.3, a: 0.28 }); lastRing = now; }
       if (ufo) ufo.lights = 1;
+      // The disco ball's light orbs join the defence: now and then one fires at a nearby asteroid.
+      if (ufo && ufo.drop > 0.6 && rocks.length && Math.random() < 0.5) {
+        const orbs = ufo.spots.filter((p) => p.sx > 0 && p.sx < w && p.sy > 0 && p.sy < h);
+        const p = orbs.length && pick(orbs);
+        if (p) {
+          let target = null, best = 520;
+          rocks.forEach((r) => {
+            const d = Math.hypot(r.x - p.sx, r.y - p.sy);
+            if (d < best && r.x > -20 && r.x < w + 20) { best = d; target = r; }
+          });
+          if (target) {
+            const a = Math.atan2(target.y - p.sy, target.x - p.sx);
+            bolts.push({ x: p.sx, y: p.sy, vx: Math.cos(a) * 640, vy: Math.sin(a) * 640, c: p.c, life: 1 });
+          }
+        }
+      }
       // Ships on screen fire on the beat, aiming at a nearby asteroid when there is one.
       ships.forEach((s) => {
         if (s.x < 0 || s.x > w) return;
@@ -296,6 +332,7 @@
           u.spots.forEach((p) => {
             const a = p.a + u.spin;
             const sx = bx + Math.cos(a) * p.d * reach, sy = by + Math.sin(a) * p.d * reach * 0.75;
+            p.sx = sx; p.sy = sy; // remembered so the orbs can fire on the beat
             ctx.globalAlpha = glow * 0.18;
             ctx.strokeStyle = p.c; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(sx, sy); ctx.stroke();
@@ -356,11 +393,21 @@
     for (let i = texts.length - 1; i >= 0; i--) {
       const t = texts[i];
       t.t += dt;
-      if (t.t > 4) { texts.splice(i, 1); continue; }
-      const shown = t.text.slice(0, Math.ceil(t.text.length * Math.min(1, t.t * 2.5)));
-      ctx.globalAlpha = t.t > 3.2 ? (4 - t.t) / 0.8 : (Math.random() < 0.06 ? 0.4 : 1);
+      if (t.t > t.life) { texts.splice(i, 1); continue; }
+      // Long lines wrap to fit the screen and type out character by character.
+      if (!t.lines) {
+        t.lines = wrap(t.text, Math.min(320, w - 32));
+        t.half = Math.max(...t.lines.map((l) => ctx.measureText(l).width)) / 2;
+      }
+      let left = Math.ceil(t.text.length * Math.min(1, t.t * 2.5));
+      ctx.globalAlpha = t.t > t.life - 0.8 ? (t.life - t.t) / 0.8 : (Math.random() < 0.06 ? 0.4 : 1);
       ctx.fillStyle = t.color;
-      ctx.fillText(shown, Math.min(w - 90, Math.max(90, t.x)), t.y);
+      const x = Math.min(w - 16 - t.half, Math.max(16 + t.half, t.x));
+      t.lines.forEach((l, k) => {
+        if (left <= 0) return;
+        ctx.fillText(l.slice(0, left), x, t.y - (t.lines.length - 1 - k) * 16); // grows upward, clear of the saucer
+        left -= l.length + 1;
+      });
     }
     ctx.globalAlpha = 1;
   }

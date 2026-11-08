@@ -39,9 +39,9 @@ Music was thought to be an important factor to aid in the healing process of Neo
   - **Yinzosa:** void-adapted organisms that hibernate during travel and awaken to hive-based commands from a central commander.
   - **Mazaelin:** six-limbed apex predators from a high-gravity jungle moon, sporting dense bone-plated skulls.
 - Nearly all Neo//Earth citizens still hate the alien species that caused the destruction.
-- **The Krynn (the disco-ball visitors in vibe mode):** energy-beings that must remain in constant motion to prevent their plasma matrices from dissipating. A 4th alien species. They are trying to protect Earth as Neo//Earth rebuilds, while listening to the righteous tracks the Neo//Earthlings are broadcasting to keep the morale and vibes high.
-- Neo//Earth doesn't know what's going on in space, because they haven't rebuilt that technology yet; they don't know the Krynn are protecting them.
-- **How the Krynn talk:** they've heard classic radio lines, like request lines being open, but know they can't access them because the current Earth atmosphere is too volatile to land in. They say these lines to each other as if emulating radio chatter. Example: "GALACTIC REQUEST LINE OPEN, NEXT TRACK: PROTECT NEO//EARTH".
+- **The Kryx (the disco-ball visitors in vibe mode):** energy-beings that must remain in constant motion to prevent their plasma matrices from dissipating. A 4th alien species. They are trying to protect Earth as Neo//Earth rebuilds, while listening to the righteous tracks the Neo//Earthlings are broadcasting to keep the morale and vibes high.
+- Neo//Earth doesn't know what's going on in space, because they haven't rebuilt that technology yet; they don't know the Kryx are protecting them.
+- **How the Kryx talk:** they've heard classic radio lines, like request lines being open, but know they can't access them because the current Earth atmosphere is too volatile to land in. They say these lines to each other as if emulating radio chatter. Example: "GALACTIC REQUEST LINE OPEN, NEXT TRACK: PROTECT NEO//EARTH".
 
 ## Ships and asteroids
 
@@ -67,7 +67,7 @@ Music was thought to be an important factor to aid in the healing process of Neo
 | NESE | Neo//Earth Signal Engineers Corps, the organization that streams music around the planet |
 | Neo//Earthlings | The people of Neo-Earth |
 | Cynarii, Yinzosa, Mazaelin | The three alien species that fought the war against Earth |
-| Krynn | The 4th species, who secretly protect Neo-Earth (the disco-ball visitors) |
+| Kryx | The 4th species, who secretly protect Neo-Earth (the disco-ball visitors) |
 
 ## Easter eggs and secrets
 
@@ -90,6 +90,8 @@ Music was thought to be an important factor to aid in the healing process of Neo
 - 2026-11-08: NESE is the Signal Engineers Corps (was "Core"); the K species, the disco-ball visitors who secretly protect Neo-Earth; Neo//Earthlings added to vocabulary.
 - 2026-11-08: How the K aliens talk (emulating radio chatter they've overheard); Earth's atmosphere too volatile to land in; radio is the heart of the concept.
 - 2026-11-08: Named and described the four species: Cynarii, Yinzosa, Mazaelin (the invaders) and Krynn (the protectors).
+- 2026-11-08: The protectors renamed from Krynn to Kryx (Krynn is the world of the Dragonlance series).
+- 2026-11-08: App updated to match: new Kryx lines in vibe mode, and the disco ball's orbs now help shoot asteroids.
 
 ---
 
@@ -101,13 +103,13 @@ What the app says today, so it's clear what the lore would change. File names ar
 
 **Link previews** (`public/index.html` meta tags, `public/og-image.png`): still "Live music radio from a random city. Earth music only." / "> EARTH MUSIC ONLY_".
 
-**Vibe-mode visitors** (`UFO_LINES` in `public/vibes.js`), shown when the UFO arrives and drops its disco ball:
-- > GALACTIC REQUEST LINE OPEN
+**Vibe-mode visitors: the Kryx** (`UFO_LINES` in `public/vibes.js`), one line shown when the UFO arrives and drops its disco ball; the ball's light orbs also fire at asteroids:
+- > GALACTIC REQUEST LINE OPEN, NEXT TRACK: PROTECT NEO//EARTH
 - > DISCO DEPLOYED
-- > NOW SPINNING FOR EARTH
-- > THIS ONE GOES OUT TO EARTH
-- > GREETINGS FROM THE ANDROMEDA TOP 40
-- > TAKE ME TO YOUR DJ
+- > NOW SPINNING FOR NEO//EARTH
+- > THIS ONE GOES OUT TO NEO//EARTH
+- > GREETINGS FROM KRYX
+- > DON'T HANG THE DJ!
 
 **Status line** (`public/app.js`): > SCANNING FREQUENCIES… · > LINK ESTABLISHED // 128 kbps MP3 · > SIGNAL LOST — RETUNING… · > SIGNAL STALLED · > STILL SCANNING — WIDENING SEARCH… · > RETUNING TO SAVED SIGNAL… · > LINK PAUSED · > TAP PLAY TO START AUDIO · > STATION HIDDEN — RETUNING… · > SHARED SIGNAL RECEIVED · > GLOBE OFFLINE — AUDIO ONLY
 
