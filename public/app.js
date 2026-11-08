@@ -295,6 +295,7 @@
   function setPrevButton() {
     const b = $('prevBtn');
     b.disabled = state.switching || !state.back.length;
+    $('vibePrev').disabled = b.disabled;
   }
 
   function clearTimers() {
@@ -543,6 +544,60 @@
     vctx.globalAlpha = 1;
     requestAnimationFrame(drawViz);
   }
+
+  /* ---------- Vibe mode ----------
+     Hides everything but the globe and plays music-reactive effects from
+     vibes.js over it. On iPhone there's no true full-screen for pages, so the
+     layout itself goes edge to edge; elsewhere the browser goes full screen too. */
+  let bassAvg = 0, lastBeat = 0;
+  function vibeLevels() {
+    const live = state.current && !state.paused && !audio.paused;
+    if (!live) return { bass: 0, energy: 0, beat: false };
+    const now = performance.now();
+    if (analyser && audio === corsAudio && silentFrames <= 90) {
+      if (!vizData) vizData = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(vizData);
+      let b = 0, e = 0;
+      for (let i = 0; i < 6; i++) b += vizData[i];
+      for (let i = 0; i < vizData.length; i++) e += vizData[i];
+      const bass = b / (6 * 255), energy = e / (vizData.length * 255);
+      // A beat is a bass hit clearly above its recent average.
+      const beat = bass > 0.3 && bass > bassAvg * 1.18 && now - lastBeat > 260;
+      bassAvg = bassAvg * 0.92 + bass * 0.08;
+      if (beat) lastBeat = now;
+      return { bass, energy, beat };
+    }
+    // No access to the audio data (iPhone, or a stream without CORS): fake a groove at about 116 BPM.
+    const period = 517;
+    const beat = now - lastBeat > period;
+    if (beat) lastBeat = now - ((now - lastBeat) % period);
+    const since = (now - lastBeat) / period;
+    return { bass: Math.max(0, 0.75 - since * 0.8), energy: 0.35 + 0.15 * Math.sin(now / 1900), beat };
+  }
+
+  function setVibe(on) {
+    document.body.classList.toggle('vibe', on);
+    $('vibeBtn').setAttribute('aria-pressed', on ? 'true' : 'false');
+    $('vibeBtn').setAttribute('aria-label', on ? 'Leave vibe mode' : 'Vibe mode: full-screen globe');
+    if (on) {
+      closeDrawer();
+      if (!reduced && window.SignalVibes) window.SignalVibes.start($('fx'), vibeLevels);
+      const root = document.documentElement;
+      if (root.requestFullscreen && !document.fullscreenElement) root.requestFullscreen().catch(() => {});
+      if (!state.started) start(true);
+      if (globe && state.current && !reduced) globe.pointOfView({ altitude: state.current.egg ? 2.6 : 2.0 }, 1200);
+    } else {
+      if (window.SignalVibes) window.SignalVibes.stop();
+      if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    }
+    setPrevButton();
+  }
+  const inVibe = () => document.body.classList.contains('vibe');
+  $('vibeBtn').addEventListener('click', () => setVibe(!inVibe()));
+  $('vibePrev').addEventListener('click', () => prev());
+  $('vibeNext').addEventListener('click', () => next());
+  // Leaving the browser's full screen (Esc, a swipe) leaves vibe mode too.
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && inVibe()) setVibe(false); });
 
   /* ---------- Globe ---------- */
   const globeEl = $('globe');
@@ -810,7 +865,8 @@
     globe.arcsData([...network.arcs, ...journey]);
     globe.htmlElementsData([{ lat: s.lat, lng: s.lng, city: s.city }]);
     // The hidden track pulls back so the whole globe can dribble like a ball.
-    const close = s.egg ? 2.6 : narrow.matches ? 0.9 : 0.8;
+    // Vibe mode pulls back so the whole globe sits among the effects.
+    const close = s.egg ? 2.6 : document.body.classList.contains('vibe') ? 2.0 : narrow.matches ? 0.9 : 0.8;
     if (reduced) { globe.pointOfView({ lat: s.lat, lng: s.lng, altitude: close }, 0); scheduleDrift(); return; }
     globe.pointOfView({ lat: s.lat, lng: s.lng, altitude: 2.2 }, 1500);
     setTimeout(() => {
@@ -1341,7 +1397,8 @@
     if (e.key === 'p' || e.key === 'ArrowLeft') prev();
     if (e.key === ' ' && !e.target.closest('button')) { e.preventDefault(); togglePlay(); }
     if (e.key === 'f') toggleFavorite();
-    if (e.key === 'Escape') { closeGenreSheet(); closeDrawer(); }
+    if (e.key === 'v') setVibe(!inVibe());
+    if (e.key === 'Escape') { closeGenreSheet(); closeDrawer(); if (inVibe()) setVibe(false); }
   });
 
   /* ---------- Account & sync ----------
