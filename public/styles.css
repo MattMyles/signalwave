@@ -154,7 +154,7 @@ button:focus-visible, label:focus-visible, input:focus-visible {
   padding: 0 max(16px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 14px) max(16px, env(safe-area-inset-left, 0px));
 }
 .panel {
-  position: relative; background: rgba(0, 0, 0, 0.65); padding: 14px 16px 12px; /* black at 65% so the globe shows through */
+  position: relative; background: rgba(0, 0, 0, 0.5); padding: 14px 16px 12px; /* black at 50% so the globe shows through */
   border: 1px solid var(--cyan);
   clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
   box-shadow: inset 0 0 24px rgba(0, 240, 255, 0.08);
