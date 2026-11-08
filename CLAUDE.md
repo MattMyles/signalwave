@@ -109,6 +109,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - "Add a shared station" renamed "Add received signal" (build 17).
 - Rebranded to **NEO // EARTH** (Neo Earth Radio), domain neoearthradio.com; new link-preview image; export file now `neo-earth-radio-favorites.json` (build 18).
 - Skills renamed `/neoearth` (make changes) and `/neoearth-rename` (rename protocol).
+- Lore skills: `/neoearth-lore` (summary), `/neoearth-lore-update` (new entries), `/neoearth-lore-verify` (continuity check); `docs/LORE.md` gained Open questions and Lore log sections.
 - Splash tagline now "Live music radio from a random city on Neo-Earth. Neo-Earth music only."; started `docs/LORE.md` for Matt's Neo-Earth lore (build 19).
 
 Add a line here when shipping something notable.

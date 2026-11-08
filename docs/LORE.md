@@ -2,6 +2,8 @@
 
 Matt's world-building for NEO // EARTH. **Matt writes this; Claude reads it.** Nothing here is final until Matt fills it in, and the sections below are only prompts.
 
+**Skills:** `/neoearth-lore` (summary of the current lore), `/neoearth-lore-update` (add or change entries), `/neoearth-lore-verify` (continuity check).
+
 **For Claude:** before writing or changing any in-world text (the splash page, status messages, vibe-mode alien lines, Easter eggs, toasts, empty states), read this file and follow it. If the lore contradicts text already in the app, point it out and offer to update the app to match. Don't invent canon here yourself; suggest ideas in chat and let Matt add what he likes.
 
 ---
@@ -55,6 +57,18 @@ Matt's world-building for NEO // EARTH. **Matt writes this; Claude reads it.** N
 *Hidden things and the story behind them (e.g. the Wrecking Crew transmission).*
 
 -
+
+## Open questions
+
+*Things not decided yet. Claude may list questions here when Matt asks, but never answers them itself.*
+
+-
+
+## Lore log
+
+*One line per change: date, what was added or changed.*
+
+- 2026-11-08: Document started (empty sections).
 
 ---
 
