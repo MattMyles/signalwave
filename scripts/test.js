@@ -37,6 +37,18 @@ function icyBody(metaint, title) {
   await t('does not place stations from ordinary words or other countries', () => {
     for (const [st, n, cc] of [['', 'Paradise FM', 'US'], ['', 'Love Radio', 'PH'], ['Bavaria', 'Radio Bob', 'DE'], ['', 'Radio Lyon', 'DE'], ['', 'Radio Lyon', '']]) assert.strictEqual(where(st, n, cc), null, n);
   });
+  const { translateTags } = require('../lib/translate');
+  const tr = (x) => translateTags(splitTags(x));
+  await t('foreign tags count as music and match genres', () => {
+    assert(isMusicStation(tr('ロック,邦楽'))); assert(matchesGenre(tr('ロック'), resolveGenre('rock')));
+    assert(matchesGenre(tr('música electrónica'), resolveGenre('electronic')));
+    assert(matchesGenre(tr('アニソン'), resolveGenre(null, 'j-pop')));
+    assert(matchesGenre(tr('메탈'), resolveGenre('metal')));
+  });
+  await t('foreign talk, news, sport and religious stations stay blocked', () => {
+    for (const x of ['noticias,música', 'ニュース,音楽', 'новости', 'deportes,futbol', 'música cristiana', '교회,음악']) assert(!isMusicStation(tr(x)), x);
+  });
+  await t('translation leaves unrelated tags alone', () => { assert(!tr('host,ghost').includes('soundtrack')); assert.deepStrictEqual(tr('house,techno'), ['house', 'techno']); });
   await t('music station passes', () => assert(isMusicStation(splitTags('house,techno,dance'))));
   await t('talk station rejected', () => assert(!isMusicStation(splitTags('news,talk,pop'))));
   await t('sports rejected', () => assert(!isMusicStation(splitTags('sports,rock'))));
@@ -82,6 +94,16 @@ function icyBody(metaint, title) {
 
   console.log('Song titles');
   await t('artist - title ok', () => assert(looksLikeSong('Daft Punk - Around the World', 'Radio X')));
+  await t('Japanese title formats ok', () => {
+    for (const x of ['夜に駆ける / YOASOBI', '米津玄師「Lemon」', 'あいみょん／マリーゴールド', 'Perfume - ポリリズム']) assert(looksLikeSong(x, 'FM'), x);
+  });
+  await t('slogans still rejected', () => { assert(!looksLikeSong('Rock / Pop / Dance', 'FM')); assert(!looksLikeSong('東京ラジオ', 'FM')); });
+  await t('Shift-JIS titles decode as Japanese', () => {
+    const { decodeMeta } = require('../lib/icy');
+    const sj = Buffer.from([0x83,0x8c,0x83,0x82,0x83,0x93,0x20,0x2f,0x20,0x95,0xc4,0x92,0xc3,0x8c,0xba,0x8e,0x74]); // レモン / 米津玄師
+    assert.strictEqual(decodeMeta(sj), 'レモン / 米津玄師');
+    assert.strictEqual(decodeMeta(Buffer.from('Björk - Jóga', 'latin1')), 'Björk - Jóga');
+  });
   await t('en dash ok', () => assert(looksLikeSong('Björk – Hyperballad', 'FM')));
   await t('station name rejected', () => assert(!looksLikeSong('Radio X', 'Radio X')));
   await t('slogan without separator rejected', () => assert(!looksLikeSong('The best hits all day', 'Hits FM')));
