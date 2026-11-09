@@ -6,6 +6,7 @@
 // Each style counts its other names too (TAG_ALIASES). Cached for a day.
 const { GENRES, TAG_ALIASES } = require('../lib/config');
 const { searchStations } = require('../lib/radio');
+const { cityFromText } = require('../lib/geo');
 const { query, sendJson } = require('../lib/http');
 
 const CAP = 300; // per name searched; totals at or above this show as "300+"
@@ -35,7 +36,10 @@ async function idsForTag(tag) {
   const hit = cache.get(tag);
   if (hit && Date.now() - hit.at < DAY) return hit.ids;
   const list = await searchStations({ tag, limit: CAP });
-  const ids = new Set(list.filter((s) => s.stationuuid && (s.url_resolved || '').startsWith('https://')).map((s) => s.stationuuid));
+  // Counts stations the app could place on the map: coordinates, or a city in
+  // their listed region or name (see cityFromText in lib/geo.js).
+  const placeable = (s) => (s.geo_lat != null && s.geo_long != null) || cityFromText(s.state, s.name, s.countrycode);
+  const ids = new Set(list.filter((s) => s.stationuuid && (s.url_resolved || '').startsWith('https://') && placeable(s)).map((s) => s.stationuuid));
   cache.set(tag, { ids, at: Date.now() });
   return ids;
 }

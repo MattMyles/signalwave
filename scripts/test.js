@@ -30,6 +30,13 @@ function icyBody(metaint, title) {
   await t('rejects things that are not IDs', () => { for (const bad of ['', 'abc', 'NESE-', '7a', 'NESE-12-3', null]) assert.strictEqual(parseNeseId(bad), null, String(bad)); });
 
   console.log('Filters');
+  const { cityFromText } = require('../lib/geo');
+  const where = (st, n, cc) => (cityFromText(st, n, cc) || {}).city || null;
+  await t('places a station by its listed region', () => { assert.strictEqual(where('Hamburg', 'Synth FM', 'DE'), 'Hamburg'); assert.strictEqual(where('New York', 'Hot 97', 'US'), 'New York City'); });
+  await t('places a station by a big city in its name', () => { assert.strictEqual(where('', 'Radio Kraków Muzyka', 'PL'), 'Kraków'); assert.strictEqual(where('', 'Mexico City Synth', 'MX'), 'Mexico City'); });
+  await t('does not place stations from ordinary words or other countries', () => {
+    for (const [st, n, cc] of [['', 'Paradise FM', 'US'], ['', 'Love Radio', 'PH'], ['Bavaria', 'Radio Bob', 'DE'], ['', 'Radio Lyon', 'DE'], ['', 'Radio Lyon', '']]) assert.strictEqual(where(st, n, cc), null, n);
+  });
   await t('music station passes', () => assert(isMusicStation(splitTags('house,techno,dance'))));
   await t('talk station rejected', () => assert(!isMusicStation(splitTags('news,talk,pop'))));
   await t('sports rejected', () => assert(!isMusicStation(splitTags('sports,rock'))));
