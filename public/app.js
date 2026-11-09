@@ -42,7 +42,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '37';
+  const BUILD = '38';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -1078,7 +1078,7 @@
       });
       const btn = $('favBtn');
       btn.classList.remove('burst'); void btn.offsetWidth; btn.classList.add('burst');
-      toast('> SIGNAL SAVED');
+      toast(`> SIGNAL SAVED // FIND IT UNDER ${nese && nese.id ? 'NESE' : 'SAVED'}`);
     }
     saveFavs();
     setFavButton();
@@ -1192,7 +1192,7 @@
   // NESE members get the transmit sheet (send to a member's ID, or copy the link);
   // everyone else copies the link straight away.
   function shareStation(f) {
-    if (nese && nese.id) return openSendSheet(f);
+    if (nese && nese.id) { setDashTab('transmit'); fillTxSignals(f.uuid); $('txTo').focus(); return; }
     return copyStationLink(f);
   }
   async function copyStationLink(f) {
@@ -1951,7 +1951,7 @@
         nese = { id: j.id, number: j.number, inbox: Array.isArray(j.inbox) ? j.inbox : [] };
         if (before >= 0 && nese.inbox.length > before && $('drawer').hidden) {
           const n = nese.inbox.length;
-          toast(`> ${n} INCOMING TRANSMISSION${n === 1 ? '' : 'S'}`, { label: 'OPEN', fn: openDrawer });
+          toast(`> ${n} INCOMING TRANSMISSION${n === 1 ? '' : 'S'}`, { label: 'OPEN', fn: () => { openDrawer(); setDashTab('transmit'); } });
         }
       } else {
         nese = null; // not set up, or signed out elsewhere: show the plain Saved panel
@@ -1969,8 +1969,11 @@
     $('neseBadge').hidden = !member;
     if (member) $('neseId').textContent = nese.id;
     const inbox = member ? nese.inbox : [];
-    $('incoming').hidden = !inbox.length;
+    $('neseTabs').hidden = !member;
+    if (!member) setDashTab('signals');
+    $('inboxEmpty').hidden = inbox.length > 0;
     $('inboxDot').hidden = !inbox.length;
+    $('tabDot').hidden = !inbox.length;
     const list = $('inboxList');
     list.innerHTML = '';
     for (const s of inbox) {
@@ -2004,6 +2007,74 @@
     nese.inbox = nese.inbox.filter((x) => Number(x.id) !== id);
     renderNese();
     neseCall('POST', { action: 'dismiss', id }).catch(() => {});
+  });
+
+  // Dashboard tabs (members only): SIGNALS = the saved list and the rest of the
+  // panel; TRANSMIT = send a signal to a member's ID, plus incoming transmissions.
+  function setDashTab(tab) {
+    const tx = tab === 'transmit';
+    $('drawer').classList.toggle('tab-tx', tx);
+    $('txPanel').hidden = !tx;
+    $('tabSignals').setAttribute('aria-selected', String(!tx));
+    $('tabTransmit').setAttribute('aria-selected', String(tx));
+    if (tx) fillTxSignals();
+  }
+  $('tabSignals').addEventListener('click', () => setDashTab('signals'));
+  $('tabTransmit').addEventListener('click', () => setDashTab('transmit'));
+
+  // The signal picker: the one playing now (unless it's the hidden track) and every saved one.
+  function txChoices() {
+    const list = [];
+    const cur = state.current;
+    if (cur && !cur.egg) list.push({ s: cur, label: `▶ NOW PLAYING: ${cur.name}` });
+    for (const f of state.favorites) if (!cur || f.uuid !== cur.uuid || cur.egg) list.push({ s: f, label: `♥ ${f.name}${f.city ? ` (${f.city})` : ''}` });
+    return list;
+  }
+  function fillTxSignals(preferUuid) {
+    const sel = $('txSignal');
+    const keep = preferUuid || sel.value;
+    const choices = txChoices();
+    sel.innerHTML = '';
+    for (const c of choices) {
+      const o = document.createElement('option');
+      o.value = c.s.uuid;
+      o.textContent = c.label;
+      sel.appendChild(o);
+    }
+    if (!choices.length) {
+      const o = document.createElement('option');
+      o.value = '';
+      o.textContent = 'Save a signal with ♥ on the player first';
+      sel.appendChild(o);
+    }
+    if (keep && choices.some((c) => c.s.uuid === keep)) sel.value = keep;
+    $('txGo').disabled = !choices.length;
+  }
+  function txMsg(text, kind = '') {
+    const el = $('txMsg');
+    el.textContent = text;
+    el.classList.toggle('warn', kind === 'warn');
+    el.classList.toggle('ok', kind === 'ok');
+  }
+  $('txCopy').addEventListener('click', () => {
+    const choice = txChoices().find((c) => c.s.uuid === $('txSignal').value);
+    if (choice) copyStationLink(choice.s); else txMsg('Play or save a signal first.', 'warn');
+  });
+  $('txForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const choice = txChoices().find((c) => c.s.uuid === $('txSignal').value);
+    const to = $('txTo').value.trim();
+    if (!choice) return txMsg('Play or save a signal first.', 'warn');
+    if (!to) return txMsg('Enter a NESE ID, like NESE-0007.', 'warn');
+    const f = choice.s;
+    $('txGo').disabled = true;
+    txMsg('Transmitting…');
+    let j = null;
+    try { j = await neseCall('POST', { action: 'send', to, station: { uuid: f.uuid, name: f.name, city: f.city, country: f.country } }); } catch (_) { /* below */ }
+    $('txGo').disabled = false;
+    if (!j || !j.ok) return txMsg((j && j.error) || 'NESE network unreachable. Try again.', 'warn');
+    txMsg(`> ${f.name} transmitted to ${j.to}.`, 'ok');
+    $('txTo').value = '';
   });
 
   function openSendSheet(f) {

@@ -347,6 +347,27 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 .nese-org { font-size: 9px; letter-spacing: 0.22em; color: var(--dim); font-weight: 600; }
 .nese-id { font-size: 22px; color: var(--yellow); letter-spacing: 0.12em; text-shadow: 0 0 10px rgba(252, 238, 10, 0.5); }
 .incoming { display: flex; flex-direction: column; gap: 8px; }
+/* NESE dashboard tabs: SIGNALS (saved list etc.) and TRANSMIT (send + incoming). */
+.nese-tabs { display: flex; border-bottom: 1px solid var(--line); }
+.nese-tabs button {
+  flex: 1; min-height: 44px; background: none; border: 0; border-bottom: 2px solid transparent;
+  color: var(--dim); font-size: 13px; font-weight: 600; letter-spacing: 0.2em;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.nese-tabs button[aria-selected='true'] { color: var(--yellow); border-bottom-color: var(--yellow); }
+.drawer.tab-tx > :not(.drawer-head):not(.nese-badge):not(.nese-tabs):not(.tx-panel):not(.build) { display: none !important; }
+.tx-panel { display: flex; flex-direction: column; gap: 12px; }
+.tx-form { display: flex; flex-direction: column; gap: 10px; }
+.tx-field { display: flex; flex-direction: column; gap: 4px; }
+.tx-name { font-size: 10px; letter-spacing: 0.22em; color: var(--dim); font-weight: 600; }
+.tx-form select, .tx-form input {
+  min-height: 44px; padding: 8px 10px; background: rgba(0, 240, 255, 0.04); color: var(--text);
+  border: 1px solid var(--line); font-family: var(--font-mono); font-size: 15px;
+}
+.tx-form select:focus, .tx-form input:focus { outline: none; border-color: var(--cyan); }
+.tx-form .go { align-self: flex-start; }
+#txMsg.warn { color: var(--magenta); }
+#txMsg.ok { color: var(--green); }
 .incoming .label { color: var(--green); margin-top: 0; }
 .favlist li.signal { grid-template-columns: 1fr auto auto; border-color: var(--green); }
 .favlist .from { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--green); }
@@ -368,6 +389,9 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 .favlist .share:hover { color: var(--yellow); }
 .add-shared { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
 .empty { color: var(--dim); font-size: 13px; margin: 0; }
+.save-how { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 10px; padding: 9px 12px; border: 1px dashed rgba(255, 62, 200, 0.5); background: rgba(255, 62, 200, 0.06); font-size: 13px; line-height: 1.45; color: var(--text, #cfe9f2); }
+.save-how .save-ic { color: var(--pink, #ff3ec8); font-size: 18px; line-height: 1; text-shadow: 0 0 8px rgba(255, 62, 200, 0.7); }
+.save-how b { color: var(--pink, #ff3ec8); }
 .drawer-foot { display: flex; flex-wrap: wrap; gap: 10px; }
 .btn-ghost:disabled { opacity: 0.4; cursor: default; }
 /* Export picker: rows become checkboxes */
