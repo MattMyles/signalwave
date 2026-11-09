@@ -2,6 +2,10 @@
 
 **NEO // EARTH** (Neo Earth Radio, neoearthradio.com, formerly Signal Wave): random live music radio from a random city on Neo-Earth, played over a neon cyberpunk globe. Built for Matt, who mostly uses it as a home-screen app on his iPhone. Live site deploys from `main` on Vercel. README.md is the human setup guide; this file is the working map for making changes.
 
+## Purpose (judge every change against this)
+
+**New music discovery.** The point is for listeners to hear what people around the world actually listen to in their favourite genres, and to find music they haven't heard before. So: real local stations in real cities, spread across the world; not curated internet-only channels or playlists of familiar songs (Matt ruled out adding Nightride FM / SomaFM / laut.fm-style networks for this reason).
+
 ## Ground rules
 
 - **Pushing to `main` deploys the live site.** Matt has asked for changes to go straight to `main` once tested; for anything risky or large, push a branch first (Vercel builds a preview) and ask.
