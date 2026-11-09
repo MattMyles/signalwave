@@ -119,7 +119,7 @@ What the app says today, so it's clear what the lore would change. File names ar
 
 **Saved panel and toasts**: SAVED SIGNALS · ADD RECEIVED SIGNAL · > SIGNAL SAVED · > SIGNAL REMOVED · > SIGNALS SYNCED · > THIS SIGNAL CANNOT BE CAPTURED
 
-**NESE members (signed in)**: top button "NESE"; panel title NESE DASHBOARD; ID badge "NEO//EARTH SIGNAL ENGINEERS CORPS / NESE-0000"; dashboard tabs SIGNALS / TRANSMIT; TRANSMIT tab: "SEND A SIGNAL TO A NESE MEMBER", SIGNAL / TO fields, TRANSMIT, COPY LINK INSTEAD, "> Tokyo Beat FM transmitted to NESE-0001.", INCOMING TRANSMISSIONS ("FROM NESE-0001", ADD; empty: "Nothing incoming yet. Share your ID so members can send you signals."); save toast "> SIGNAL SAVED // FIND IT UNDER NESE" · > 1 INCOMING TRANSMISSION · "No NESE member has that ID.".
+**NESE members (signed in)**: top button "NESE"; panel title NESE DASHBOARD; ID badge "NEO//EARTH SIGNAL ENGINEERS CORPS / NESE-0000"; dashboard tabs SIGNALS / TRANSMIT; TRANSMIT tab: "SEND A SIGNAL TO A NESE MEMBER", SIGNAL / TO fields, TRANSMIT, COPY LINK INSTEAD, "> Tokyo Beat FM transmitted to NESE-0001.", INCOMING TRANSMISSION SIGNALS ("FROM NESE-0001", ADD; empty: "Nothing incoming yet. Share your ID so members can send you signals."); save toast "> SIGNAL SAVED // FIND IT UNDER NESE" · > 1 INCOMING TRANSMISSION · "No NESE member has that ID.".
 
 **Sign-in email** (`supabase/templates/magic_link.html`): subject "Welcome to the Neo//Earth Signal Engineers Corps // code ######"; "> TRANSMISSION RECEIVED" · "Welcome to the Neo//Earth Signal Engineers Corps." · YOUR SIGN-IN CODE · footer "> LINK STANDING BY".
 
