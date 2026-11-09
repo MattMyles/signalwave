@@ -39,7 +39,7 @@ Name check at the rename: no "Neo Earth Radio" found. There is an iPhone app cal
 | `api/config.js` | Tells the browser whether sync is configured (public URL + anon key only) |
 | `api/keepalive.js` | Daily cron (`vercel.json`) so free Supabase doesn't pause |
 
-Station vetting (`lib/vet.js`), the five checks: directory filters → music-only tags (talk/news/sports blocklist) → has a city (offline reverse geocode, `lib/geo.js` + `cities.json`) → stream starts fast → sends real song titles (`lib/icy.js`) → meets the quality floor (`LIMITS.minKbps` 64, AAC `minKbpsAac` 40, when the bitrate is known; failures logged as `low_quality`). Styles also search and match their other names (`TAG_ALIASES` in `lib/config.js`, e.g. synthwave → retrowave/outrun/darksynth, drum and bass → dnb); keep aliases specific since matching is by substring. Passing stations are pooled per genre in memory (resets on cold start); failures are remembered for a while; results are logged to Supabase `station_checks` (`lib/checklog.js`). `lib/radio.js` is the Radio Browser client with mirror failover. **Tune genres, tags, blocklist and timeouts in `lib/config.js`.** `probeStream` also records whether a stream sends CORS headers (`cors`), which decides if the browser can analyse its audio.
+Station vetting (`lib/vet.js`), the five checks: directory filters → music-only tags (talk/news/sports blocklist) → has a city (offline reverse geocode, `lib/geo.js` + `cities.json`) → stream starts fast → sends real song titles (`lib/icy.js`) → meets the quality floor (`LIMITS.minKbps` 64, AAC `minKbpsAac` 40, when the bitrate is known; failures logged as `low_quality`). Styles also search and match their other names (`TAG_ALIASES` in `lib/config.js`, e.g. synthwave → retrowave/outrun/darksynth, drum and bass → dnb); keep aliases specific since matching is by substring. Region searches always use the style's own name plus one alias; the worldwide fallback searches all names (up to 8) in parallel. Passing stations are pooled per genre in memory (resets on cold start); failures are remembered for a while; results are logged to Supabase `station_checks` (`lib/checklog.js`). `lib/radio.js` is the Radio Browser client with mirror failover. **Tune genres, tags, blocklist and timeouts in `lib/config.js`.** `probeStream` also records whether a stream sends CORS headers (`cors`), which decides if the browser can analyse its audio.
 
 Env vars (Vercel): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (server only, never sent to browsers), `ADMIN_EMAILS`, optional `SITE_URL`. `lib/supabase-env.js` tolerates name typos. `scripts/build-meta.js` (`npm run build`) makes link-preview URLs absolute at deploy.
 
@@ -138,6 +138,8 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Changing genres while a search is running no longer plays a station for the old selection: `next()` drops a find whose genre key no longer matches `selKey()` and searches again (`restartForNewGenres`) (build 37).
 
 - NESE dashboard split into SIGNALS and TRANSMIT tabs: send a playing or saved signal to a member's ID; incoming transmissions live on TRANSMIT; clearer note that only ♥-saved stations appear in the list (build 38).
+
+- Fixed small styles (synthwave) finding no signal since build 35: region searches always include the style's own name, and once every region is tried the search goes worldwide across all its names at once instead of looping until the deadline (server only).
 
 Add a line here when shipping something notable.
 
