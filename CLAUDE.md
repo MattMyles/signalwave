@@ -135,6 +135,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Vibe mode: beat detection works for all music on desktop, not just kick-heavy synthwave; tap/click an asteroid to shoot it from your signal's city (75% hit chance) (build 34).
 - Discovery: random play never repeats a station you've heard (saved stations are how you return); styles match their other tag names; streams below 64 kbps (AAC 40) are rejected as too weak (build 35). Needs migration `20261109070000_low_quality_check.sql` for the dashboard to count low-quality rejections.
 - Station counts per genre and style in the genre editor; adding a genre while on Any now tunes to it (Matt removed all genres, added Death Metal and got electronic because nothing was selected) (build 36).
+- Changing genres while a search is running no longer plays a station for the old selection: `next()` drops a find whose genre key no longer matches `selKey()` and searches again (`restartForNewGenres`) (build 37).
 
 Add a line here when shipping something notable.
 

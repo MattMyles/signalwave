@@ -42,7 +42,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '36';
+  const BUILD = '37';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -283,6 +283,7 @@
       }
     } catch (e) {
       if (state.eggAt >= startedAt) return; // the hidden track took over; stay quiet
+      if (g !== selKey()) return restartForNewGenres(); // genres changed mid-search: search again
       if (e.status === 503 && state.selected.length === 1) markGenreDead(state.selected[0]);
       status(`> ${e.message.toUpperCase()}`, true);
       globeScan(false);
@@ -292,10 +293,18 @@
     }
     // The hidden track was tuned while this search ran: keep the find for later.
     if (state.eggAt >= startedAt) { state.queue.unshift(station); return; }
+    // Genres changed while this search ran: drop the find (it's for the old
+    // selection) and search for what's selected now.
+    if (g !== selKey()) return restartForNewGenres();
     fillQueue();
     await tune(station, { remember: !isWarning }).catch(() => {});
     state.switching = false;
     setBusy(false);
+  }
+  function restartForNewGenres() {
+    state.switching = false;
+    setBusy(false);
+    next(`> SCANNING ${selectionLabel()} FREQUENCIES…`);
   }
 
   // opts.remember = false skips adding the outgoing station to the back list
