@@ -42,7 +42,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '33';
+  const BUILD = '34';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -571,7 +571,7 @@
      Hides everything but the globe and plays music-reactive effects from
      vibes.js over it. On iPhone there's no true full-screen for pages, so the
      layout itself goes edge to edge; elsewhere the browser goes full screen too. */
-  let bassAvg = 0, lastBeat = 0;
+  let bassPrev = 0, fluxAvg = 0, lastBeat = 0;
   function vibeLevels() {
     const live = state.current && !state.paused && !audio.paused;
     if (!live) return { bass: 0, energy: 0, beat: false };
@@ -583,9 +583,16 @@
       for (let i = 0; i < 6; i++) b += vizData[i];
       for (let i = 0; i < vizData.length; i++) e += vizData[i];
       const bass = b / (6 * 255), energy = e / (vizData.length * 255);
-      // A beat is a bass hit clearly above its recent average.
-      const beat = bass > 0.3 && bass > bassAvg * 1.18 && now - lastBeat > 260;
-      bassAvg = bassAvg * 0.92 + bass * 0.08;
+      // A beat is a sudden rise in the bass compared with how much it usually
+      // moves. Kick-heavy music (synthwave, house) gives clear hits; steadier
+      // music often doesn't, so whenever no hit is heard for a beat's length the
+      // genre's typical tempo keeps the groove going, and real hits re-sync it.
+      const period = 60000 / grooveFor(state.current).bpm;
+      const flux = Math.max(0, bass - bassPrev);
+      bassPrev = bass;
+      fluxAvg = fluxAvg * 0.95 + flux * 0.05;
+      let beat = flux > Math.max(0.012, fluxAvg * 2.2) && now - lastBeat > period * 0.7;
+      if (!beat && now - lastBeat > period) beat = true;
       if (beat) lastBeat = now;
       return { bass, energy, beat };
     }
@@ -639,7 +646,7 @@
     $('vibeBtn').setAttribute('aria-label', on ? 'Leave vibe mode' : 'Vibe mode: full-screen globe');
     if (on) {
       closeDrawer();
-      if (!reduced && window.SignalVibes) window.SignalVibes.start($('fx'), vibeLevels);
+      if (!reduced && window.SignalVibes) window.SignalVibes.start($('fx'), vibeLevels, signalOnScreen);
       enterFullscreen();
       if (!state.started) start(true);
       if (globe && state.current && !reduced) globe.pointOfView({ altitude: state.current.egg ? 2.6 : 2.0 }, 1200);
@@ -669,6 +676,20 @@
     } catch (_) { /* ignore */ }
   }
   const inVibe = () => document.body.classList.contains('vibe');
+  // Where the playing signal's city is on screen (vibe mode's globe fills the screen).
+  function signalOnScreen() {
+    const s = state.current;
+    if (!globe || !s || !Number.isFinite(s.lat)) return null;
+    const p = globe.getScreenCoords(s.lat, s.lng, 0.02);
+    const box = globeEl.getBoundingClientRect();
+    return p && Number.isFinite(p.x) ? { x: p.x + box.left, y: p.y + box.top } : null;
+  }
+  // Tap (phone) or click (computer) an asteroid to shoot it from your signal's
+  // city (75% hit chance). Taps that miss every asteroid fall through to the globe.
+  document.addEventListener('pointerdown', (e) => {
+    if (!inVibe() || !window.SignalVibes || e.target.closest('button')) return;
+    if (window.SignalVibes.shootAt(e.clientX, e.clientY)) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
   $('vibeBtn').addEventListener('click', () => setVibe(!inVibe()));
   $('vibePrev').addEventListener('click', () => prev());
   $('vibeNext').addEventListener('click', () => next());

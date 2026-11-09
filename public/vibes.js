@@ -14,6 +14,7 @@
   let canvas, ctx, w = 0, h = 0, dpr = 1;
   let running = false, raf = 0, last = 0;
   let levels = () => ({ bass: 0, energy: 0, beat: false });
+  let origin = () => null; // screen position of the playing signal's city, for the listener's own shots
   let stars = [], ships = [], rocks = [], bolts = [], rings = [], debris = [], flashes = [], ufo = null, texts = [];
   let nextShip = 0, nextRock = 0, nextUfo = 0, pulse = 0, beats = 0, lastRing = 0;
 
@@ -113,6 +114,13 @@
       phase: 'in', t: 0, born: now, drop: 0, spin: 0, wob: rand(0, TAU), lights: 0,
       spots: Array.from({ length: 12 }, (_, i) => ({ a: (i / 12) * TAU + rand(-0.2, 0.2), d: rand(0.3, 1), c: pick(NEON) })),
     };
+  }
+  // Distance from point (x, y) to the line segment (ax, ay)-(bx, by).
+  function segDist(x, y, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2)) : 0;
+    return Math.hypot(x - (ax + t * dx), y - (ay + t * dy));
   }
   function say(text, x, y, color) { texts.push({ text, x, y, color, t: 0, life: 4 + text.length / 30 }); }
   // Splits a message into lines that fit the screen, breaking after commas and spaces.
@@ -231,16 +239,20 @@
     // Laser bolts; an asteroid they hit blows apart.
     for (let i = bolts.length - 1; i >= 0; i--) {
       const b = bolts[i];
+      const px = b.x, py = b.y;
       b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
       if (b.life <= 0) { bolts.splice(i, 1); continue; }
       for (let k = rocks.length - 1; k >= 0; k--) {
         const r = rocks[k];
-        if (Math.hypot(r.x - b.x, r.y - b.y) < r.r) { rocks.splice(k, 1); explode(r, b); b.life = 0; break; }
+        if (r === b.ignore) continue; // a missed shot flies past its target
+        // Check the whole stretch the bolt covered this frame, so fast shots can't skip over a rock.
+        if (segDist(r.x, r.y, px, py, b.x, b.y) < r.r) { rocks.splice(k, 1); explode(r, b); b.life = 0; break; }
       }
       if (b.life <= 0) continue;
       ctx.globalAlpha = Math.min(1, b.life * 2);
-      ctx.strokeStyle = b.c; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx * 0.03, b.y - b.vy * 0.03); ctx.stroke();
+      ctx.strokeStyle = b.c; ctx.lineWidth = b.player ? 3.5 : 2;
+      const tail = b.player ? 0.05 : 0.03;
+      ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx * tail, b.y - b.vy * tail); ctx.stroke();
     }
 
     // Explosions: a bright flash and shockwave, then tumbling shards and sparks.
@@ -412,10 +424,48 @@
     ctx.globalAlpha = 1;
   }
 
+  /* The listener's own cannon: a shot from the playing signal's city at an
+     asteroid, hitting 3 times in 4. Misses are aimed just wide and can't hit
+     that asteroid (they may still clip another one). */
+  const PLAYER_HIT_CHANCE = 0.75;
+  function fireAt(target) {
+    const o = origin();
+    if (!running || !target || !o) return false;
+    const speed = 900;
+    // Lead the target: aim where it will be when the shot arrives.
+    let tx = target.x, ty = target.y;
+    for (let k = 0; k < 2; k++) {
+      const t = Math.hypot(tx - o.x, ty - o.y) / speed;
+      tx = target.x + target.vx * t; ty = target.y + target.vy * t;
+    }
+    const d = Math.hypot(tx - o.x, ty - o.y);
+    let a = Math.atan2(ty - o.y, tx - o.x);
+    const hit = Math.random() < PLAYER_HIT_CHANCE;
+    if (!hit) a += (Math.random() < 0.5 ? -1 : 1) * Math.atan2(target.r + 24, d);
+    bolts.push({ x: o.x, y: o.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, c: '#fcee0a', life: d / speed + 0.6, player: true, ignore: hit ? null : target });
+    flashes.push({ x: o.x, y: o.y, r: 6, t: 0.3, c: '#fcee0a' }); // muzzle flash
+    return true;
+  }
+
   window.SignalVibes = {
-    start(canvasEl, levelsFn) {
+    // Tap/click at (x, y): fires if an asteroid is there. Returns true if it fired.
+    shootAt(x, y) {
+      const target = rocks.find((r) => Math.hypot(r.x - x, r.y - y) < r.r + 22);
+      return target ? fireAt(target) : false;
+    },
+    // Spacebar: fires at the asteroid nearest the signal (on screen). Returns true if it fired.
+    shootNearest() {
+      const o = origin();
+      if (!o) return false;
+      const onScreen = rocks.filter((r) => r.x > 0 && r.x < w && r.y > 0 && r.y < h);
+      if (!onScreen.length) return false;
+      const target = onScreen.reduce((best, r) => (Math.hypot(r.x - o.x, r.y - o.y) < Math.hypot(best.x - o.x, best.y - o.y) ? r : best));
+      return fireAt(target);
+    },
+    start(canvasEl, levelsFn, originFn) {
       canvas = canvasEl; ctx = canvas.getContext('2d');
       if (levelsFn) levels = levelsFn;
+      if (originFn) origin = originFn;
       resize();
       if (running) return;
       running = true; last = 0;
