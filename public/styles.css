@@ -290,6 +290,11 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 .cat[open] summary::before { transform: rotate(90deg); }
 .cat-name { flex: 1; }
 .cat-count { font-size: 11px; color: var(--cyan); letter-spacing: 0.06em; }
+/* Station count on each style button */
+.sub-n { margin-left: 8px; font-size: 10px; color: var(--dim); }
+.sub-n:empty { display: none; }
+.sub[aria-pressed='true'] .sub-n { color: #000; opacity: 0.7; }
+.sub.empty { opacity: 0.45; }
 .subs { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 0 14px 18px; }
 .sub {
   min-height: 32px; padding: 5px 11px; border: 1px solid var(--line); background: transparent; color: var(--text);

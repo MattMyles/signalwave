@@ -42,7 +42,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '35';
+  const BUILD = '36';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -1455,8 +1455,12 @@
     markChanged();
   }
   function toggleGenre(id) {
-    state.genres = state.genres.includes(id) ? state.genres.filter((g) => g !== id) : [...state.genres, id];
+    const adding = !state.genres.includes(id);
+    state.genres = adding ? [...state.genres, id] : state.genres.filter((g) => g !== id);
     saveGenres();
+    // Adding a genre while nothing is selected (i.e. on Any) tunes to it, so
+    // clearing the list and adding Death Metal plays Death Metal, not anything.
+    if (adding && !state.selected.length) toggleGenreSelection(id);
   }
   function renderMyGenres() {
     const box = $('myGenres');
@@ -1484,20 +1488,41 @@
         const b = document.createElement('button');
         b.className = 'sub';
         b.dataset.id = id;
-        b.textContent = id === main.id ? `All ${main.label}` : genreLabel(id);
+        b.dataset.label = id === main.id ? `All ${main.label}` : genreLabel(id);
+        b.innerHTML = `${esc(b.dataset.label)}<span class="sub-n mono" data-n="${esc(id)}"></span>`;
         b.addEventListener('click', () => toggleGenre(id));
         subs.appendChild(b);
       }
       d.appendChild(subs);
+      d.addEventListener('toggle', () => { if (d.open) loadGenreCounts(main.id); });
       box.appendChild(d);
     }
     syncCatalog();
+  }
+  // Candidate stations per genre and style, from the directory (cached a day on
+  // the server). An upper bound: some fail the live checks.
+  const genreCounts = new Map();
+  async function loadGenreCounts(genre) {
+    if (!genreCounts.has(genre)) {
+      genreCounts.set(genre, fetch(`/api/genre-counts?genre=${encodeURIComponent(genre)}`)
+        .then((r) => (r.ok ? r.json() : null)).catch(() => null));
+    }
+    const j = await genreCounts.get(genre);
+    if (!j || !j.counts) { genreCounts.delete(genre); return; }
+    for (const [id, c] of Object.entries(j.counts)) {
+      const el = document.querySelector(`#genreCatalog [data-n="${CSS.escape(id)}"]`);
+      if (!el) continue;
+      el.textContent = c.more ? `${c.n}+` : String(c.n);
+      el.title = `${el.textContent} stations listed with a city and secure stream`;
+      el.closest('.sub').classList.toggle('empty', c.n === 0);
+    }
   }
   function syncCatalog() {
     document.querySelectorAll('#genreCatalog .sub').forEach((b) => {
       const on = state.genres.includes(b.dataset.id);
       b.setAttribute('aria-pressed', String(on));
-      b.setAttribute('aria-label', `${on ? 'Remove' : 'Add'} ${b.textContent}`);
+      const n = b.querySelector('.sub-n');
+      b.setAttribute('aria-label', `${on ? 'Remove' : 'Add'} ${b.dataset.label}${n && n.textContent ? `, ${n.textContent} stations` : ''}`);
     });
     for (const main of CATALOG) {
       const n = [main.id, ...main.subs.map((t) => `tag:${t}`)].filter((id) => state.genres.includes(id)).length;

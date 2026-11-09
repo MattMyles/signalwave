@@ -41,6 +41,15 @@ function icyBody(metaint, title) {
     assert(matchesGenre(splitTags('dnb'), resolveGenre(null, 'drum and bass')));
     assert(!matchesGenre(splitTags('classic rock'), sw));
   });
+  await t('station-count styles match the app genre list', () => {
+    const fs = require('fs');
+    const app = fs.readFileSync(require('path').join(__dirname, '../public/app.js'), 'utf8');
+    const api = fs.readFileSync(require('path').join(__dirname, '../api/genre-counts.js'), 'utf8');
+    const appList = Object.fromEntries([...app.matchAll(/\{ id: '(\w+)', label: '[^']*', subs: \[([^\]]*)\] \}/g)].map((m) => [m[1], m[2]]));
+    const apiList = Object.fromEntries([...api.split('const STYLES = {')[1].split('};')[0].matchAll(/ {2}(\w+): \[([^\]]*)\],/g)].map((m) => [m[1], m[2]]));
+    assert.deepStrictEqual(Object.keys(apiList).sort(), Object.keys(appList).sort());
+    for (const k of Object.keys(appList)) assert.strictEqual(apiList[k], appList[k], k);
+  });
   await t('metal is its own genre', () => { const m = resolveGenre('metal'); assert(m && matchesGenre(splitTags('doom metal,stoner'), m)); assert(!matchesGenre(splitTags('classic rock'), m)); });
   await t('sub-genre tags pass the music check', () => assert(isMusicStation(splitTags('black metal'))));
   await t('genre match', () => assert(matchesGenre(splitTags('deep house,lounge'), resolveGenre('electronic'))));

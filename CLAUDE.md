@@ -35,6 +35,7 @@ Name check at the rename: no "Neo Earth Radio" found. There is an iPhone app cal
 | `api/track.js` | Logs a play after 30 s of listening (server key; random per-browser visitor ID) |
 | `api/admin-stats.js` | Dashboard numbers, only for `ADMIN_EMAILS` |
 | `api/nese.js` | NESE member ID and transmissions: `GET` (ID + inbox, assigns an ID on first call; admins get 0), `POST {action:'send', to, station}`, `POST {action:'dismiss', id}`. Signed-in users only; server key; calls the `nese_*` SQL functions. `lib/nese.js` formats/parses IDs |
+| `api/genre-counts.js` | `?genre=metal` → candidate station counts for the genre and each style (secure stream + coordinates, aliases included, capped at 300 per name, cached a day). Its `STYLES` list must match `CATALOG` in `app.js` (a test checks this) |
 | `api/config.js` | Tells the browser whether sync is configured (public URL + anon key only) |
 | `api/keepalive.js` | Daily cron (`vercel.json`) so free Supabase doesn't pause |
 
@@ -77,7 +78,7 @@ Supabase tables (`supabase/migrations/`): `user_settings` (per-user, row-level s
 - Random vetted music station worldwide, globe flies to its city with an arc from the last one; NEXT/PREV, two stations always queued.
 - Now playing with song titles, station/genre/city/country, bitrate, visualizer, Spotify and Apple Music search links, lock-screen controls.
 - **First visit:** after JACK IN, new listeners (no saved genre list) get "WHAT DO YOU WANT TO HEAR FIRST?": pick a genre, then a style or ALL <genre>, or SURPRISE ME (defaults, Any). Their list starts as the pick + related genres, 5 in all (`RELATED` in `app.js`), with the pick selected. Shared links skip it.
-- A small fixed EDIT button sits at the end of the genre row (always visible; the chips scroll). The editor explains: add as many genres as you like, pick up to 5 at a time to rotate through.
+- A small fixed EDIT button sits at the end of the genre row (always visible; the chips scroll). The editor explains: add as many genres as you like, pick up to 5 at a time to rotate through. Opening a genre in the editor loads station counts next to each style (`loadGenreCounts`, an upper bound; empty styles are dimmed). Adding a genre while nothing is selected (Any) selects it.
 - Genre chips, mix up to 5; editable list with sub-genres; dead genres flagged. 15 main genres: Electronic, Rock, Metal, Punk, Pop, Hip-hop, R&B & Soul, Jazz, Blues, Classical, Ambient & Chill, Latin, Reggae & Ska, World, Country & Folk, each with roughly 4–17 styles (`CATALOG` in `app.js`; main-genre ids and search tags must match `GENRES` in `lib/config.js`). Tags match by substring, so avoid short tags that hide inside other words (e.g. "oi", or "dub" as a main tag).
 - Saved stations (♥), shown on the globe; share by link; "Not music? Hide station". EXPORT / IMPORT sit right under the saved list (above "Add received signal"); EXPORT turns the list into a checklist (tap rows, SELECT ALL / NONE, EXPORT N, CANCEL) and downloads only the picked stations in the usual file format.
 - **NESE membership** (signed-in users): each gets a NESE ID (Matt, as admin, is NESE-0000; others count up from NESE-0001). The Saved button reads NESE, the panel becomes the NESE DASHBOARD with an ID badge, and a station's link button opens TRANSMIT SIGNAL: send it to a member's ID or copy the link. Received stations wait under INCOMING TRANSMISSIONS (green dot on the button, toast on arrival) until ADD (saves it via `/api/station`) or ✕. Only IDs are ever shown, never emails.
@@ -133,6 +134,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - First-visit genre question with 5 related genres, always-visible EDIT button, editor note about the 5-at-a-time limit, splash shows just ALPHA (build 33).
 - Vibe mode: beat detection works for all music on desktop, not just kick-heavy synthwave; tap/click an asteroid to shoot it from your signal's city (75% hit chance) (build 34).
 - Discovery: random play never repeats a station you've heard (saved stations are how you return); styles match their other tag names; streams below 64 kbps (AAC 40) are rejected as too weak (build 35). Needs migration `20261109070000_low_quality_check.sql` for the dashboard to count low-quality rejections.
+- Station counts per genre and style in the genre editor; adding a genre while on Any now tunes to it (Matt removed all genres, added Death Metal and got electronic because nothing was selected) (build 36).
 
 Add a line here when shipping something notable.
 
