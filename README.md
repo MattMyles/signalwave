@@ -90,6 +90,17 @@ Supabase's built-in email sender only allows a few emails per hour. That's
 fine for you and a few friends; for more people, add a custom SMTP sender
 (Authentication → Emails → SMTP settings).
 
+## Discovery rules
+
+- Random play never repeats a station this device has heard (up to the last
+  6,000). Saving a station is how you go back to it. If a genre has nothing new
+  left, the app plays a repeat and says so.
+- Styles also match the other names stations use (e.g. synthwave also finds
+  retrowave, outrun and darksynth): `TAG_ALIASES` in `lib/config.js`.
+- Streams must be at least 64 kbps (40 kbps for AAC) when they report a bitrate.
+  Run `supabase/migrations/20261109070000_low_quality_check.sql` so the dashboard
+  can count these rejections.
+
 ## NESE member IDs
 
 Signed-in users become NESE members with an ID (NESE-0000 for the first email in

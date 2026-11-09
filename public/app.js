@@ -42,7 +42,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '34';
+  const BUILD = '35';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -75,6 +75,7 @@
       return list;
     })(),
     favorites: store.get('sw.favorites', []),
+    heard: new Set(store.get('sw.heard', [])), // every station ever played here, so random play never repeats
     hidden: store.get('sw.hidden', []), // stations flagged "not music"
     showFavDots: store.get('sw.showFavDots', true),
     history: [],
@@ -204,11 +205,20 @@
 
   /* ---------- Station fetching ---------- */
   const selKey = () => [...state.selected].sort().join(',');
-  async function fetchStation(sel) {
-    const exclude = [...state.played, ...state.hidden, ...state.queue.map((s) => s.uuid)].slice(-250).join(',');
+  // Random play never repeats a station you've heard before (saving one is how
+  // you come back to it). Every station heard is remembered on this device and
+  // sent as the exclude list. If a genre runs out of new stations, repeats are
+  // allowed again for that search and the listener is told.
+  async function fetchStation(sel, allowRepeats = false) {
+    const heard = allowRepeats ? [...state.played] : [...state.heard, ...state.played];
+    const exclude = [...new Set([...heard, ...state.hidden, ...state.queue.map((s) => s.uuid)])].slice(-6000);
     // Countries just heard (and already queued) so the server picks a different part of the world.
-    const recent = [...state.history.slice(-3).map((h) => h.cc), ...state.queue.map((s) => s.countryCode)].filter(Boolean).join(',');
-    const r = await fetch(`/api/next?genres=${encodeURIComponent(sel)}&exclude=${encodeURIComponent(exclude)}&recent=${encodeURIComponent(recent)}`);
+    const recent = [...state.history.slice(-3).map((h) => h.cc), ...state.queue.map((s) => s.countryCode)].filter(Boolean);
+    const r = await fetch('/api/next', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ genres: sel, exclude, recent }),
+    });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.station) {
       const err = new Error(j.error || 'No signal found.');
@@ -217,13 +227,31 @@
     }
     return j.station;
   }
+  // Tries for a never-heard station first; if none turns up, allows repeats once.
+  async function fetchFresh(sel) {
+    try {
+      return await fetchStation(sel);
+    } catch (e) {
+      if (!state.heard.size || e.status !== 503) throw e;
+      const s = await fetchStation(sel, true);
+      if (state.heard.has(s.uuid)) toast('> NO NEW SIGNALS IN THIS GENRE RIGHT NOW. ADD GENRES TO DISCOVER MORE');
+      return s;
+    }
+  }
+  function markHeard(uuid) {
+    if (!uuid || state.heard.has(uuid)) return;
+    state.heard.add(uuid);
+    const list = [...state.heard].slice(-6000); // oldest are forgotten first
+    if (list.length < state.heard.size) state.heard = new Set(list);
+    store.set('sw.heard', list);
+  }
 
   // Keeps two vetted stations ready so NEXT is instant.
   function fillQueue() {
     while (state.queue.length + state.inflight < 2) {
       const g = selKey();
       state.inflight++;
-      fetchStation(g)
+      fetchFresh(g)
         .then((s) => {
           const dup = state.queue.some((q) => q.uuid === s.uuid) || state.played.has(s.uuid);
           if (g === selKey() && !dup) state.queue.push(s);
@@ -250,7 +278,7 @@
         } catch (e) {
           if (e.status !== 503 && e.status !== 502) throw e;
           status('> STILL SCANNING — WIDENING SEARCH…');
-          station = await fetchStation(g); // one quiet retry; the server keeps what it learned
+          station = await fetchFresh(g); // one quiet retry (allowing repeats if nothing new turns up)
         }
       }
     } catch (e) {
@@ -279,6 +307,7 @@
     }
     state.current = station;
     state.played.add(station.uuid);
+    if (!station.egg) markHeard(station.uuid);
     state.history.push({ uuid: station.uuid, lat: station.lat, lng: station.lng, cc: station.countryCode });
     state.title = station.title || null;
     state.titleSince = Date.now();

@@ -35,11 +35,17 @@ function icyBody(metaint, title) {
   await t('sports rejected', () => assert(!isMusicStation(splitTags('sports,rock'))));
   await t('untagged rejected', () => assert(!isMusicStation(splitTags(''))));
   await t('no music tag rejected', () => assert(!isMusicStation(splitTags('community,local'))));
+  await t('styles match their other names', () => {
+    const sw = resolveGenre(null, 'synthwave');
+    assert(matchesGenre(splitTags('retrowave,80s'), sw) && matchesGenre(splitTags('outrun'), sw));
+    assert(matchesGenre(splitTags('dnb'), resolveGenre(null, 'drum and bass')));
+    assert(!matchesGenre(splitTags('classic rock'), sw));
+  });
   await t('metal is its own genre', () => { const m = resolveGenre('metal'); assert(m && matchesGenre(splitTags('doom metal,stoner'), m)); assert(!matchesGenre(splitTags('classic rock'), m)); });
   await t('sub-genre tags pass the music check', () => assert(isMusicStation(splitTags('black metal'))));
   await t('genre match', () => assert(matchesGenre(splitTags('deep house,lounge'), resolveGenre('electronic'))));
   await t('genre mismatch', () => assert(!matchesGenre(splitTags('jazz'), resolveGenre('rock'))));
-  await t('sub-genre tag resolves', () => assert.deepStrictEqual(resolveGenre(null, 'Deep  House').tags, ['deep house']));
+  await t('sub-genre tag resolves', () => assert.deepStrictEqual(resolveGenre(null, 'Deep  House').tags, ['deep house', 'deephouse']));
   await t('bad tag ignored', () => assert.strictEqual(resolveGenre(null, '<script>'), null));
   await t('sub-genre match', () => assert(matchesGenre(splitTags('shoegaze,dream pop'), resolveGenre(null, 'shoegaze'))));
   await t('niche tag counts as music when requested', () => {

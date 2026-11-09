@@ -104,6 +104,7 @@
   const REASONS = {
     passed: 'Passed every check',
     no_song_titles: 'No song titles in the stream',
+    low_quality: 'Stream too weak (low bitrate)',
     slow_or_offline: 'Slow to respond or offline',
     not_audio: 'Not a playable audio stream',
     not_music: 'Talk, news or no music tags',

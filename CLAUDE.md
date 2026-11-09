@@ -4,7 +4,7 @@
 
 ## Purpose (judge every change against this)
 
-**New music discovery.** The point is for listeners to hear what people around the world actually listen to in their favourite genres, and to find music they haven't heard before. So: real local stations in real cities, spread across the world; not curated internet-only channels or playlists of familiar songs (Matt ruled out adding Nightride FM / SomaFM / laut.fm-style networks for this reason).
+**New music discovery.** The point is for listeners to hear what people around the world actually listen to in their favourite genres, and to find music they haven't heard before. So: real local stations in real cities, spread across the world; not curated internet-only channels or playlists of familiar songs (Matt ruled out adding Nightride FM / SomaFM / laut.fm-style networks for this reason). **Random play never repeats a station** a listener has heard before; saving a station is how you come back to it. Quality guardrails stay strict: streams must start fast, send real artist/song titles, and meet a minimum bitrate.
 
 ## Ground rules
 
@@ -29,7 +29,7 @@ Name check at the rename: no "Neo Earth Radio" found. There is an iPhone app cal
 
 | Endpoint | Purpose |
 |---|---|
-| `api/next.js` | One vetted station: `/api/next?genres=jazz,tag:deep%20house&exclude=…&recent=…` (up to 5 genres; `recent` country codes steer picks to other parts of the world) |
+| `api/next.js` | One vetted station. The app POSTs `{ genres, exclude, recent }` (exclude = every station heard on this device, up to 6000); GET `?genres=…&exclude=…&recent=…` still works. Up to 5 genres; `recent` country codes steer picks to other parts of the world |
 | `api/nowplaying.js` | Current song title by station UUID (reads ICY metadata) |
 | `api/station.js` | Looks up one station for a shared link (doesn't require song titles) |
 | `api/track.js` | Logs a play after 30 s of listening (server key; random per-browser visitor ID) |
@@ -38,7 +38,7 @@ Name check at the rename: no "Neo Earth Radio" found. There is an iPhone app cal
 | `api/config.js` | Tells the browser whether sync is configured (public URL + anon key only) |
 | `api/keepalive.js` | Daily cron (`vercel.json`) so free Supabase doesn't pause |
 
-Station vetting (`lib/vet.js`), the five checks: directory filters → music-only tags (talk/news/sports blocklist) → has a city (offline reverse geocode, `lib/geo.js` + `cities.json`) → stream starts fast → sends real song titles (`lib/icy.js`). Passing stations are pooled per genre in memory (resets on cold start); failures are remembered for a while; results are logged to Supabase `station_checks` (`lib/checklog.js`). `lib/radio.js` is the Radio Browser client with mirror failover. **Tune genres, tags, blocklist and timeouts in `lib/config.js`.** `probeStream` also records whether a stream sends CORS headers (`cors`), which decides if the browser can analyse its audio.
+Station vetting (`lib/vet.js`), the five checks: directory filters → music-only tags (talk/news/sports blocklist) → has a city (offline reverse geocode, `lib/geo.js` + `cities.json`) → stream starts fast → sends real song titles (`lib/icy.js`) → meets the quality floor (`LIMITS.minKbps` 64, AAC `minKbpsAac` 40, when the bitrate is known; failures logged as `low_quality`). Styles also search and match their other names (`TAG_ALIASES` in `lib/config.js`, e.g. synthwave → retrowave/outrun/darksynth, drum and bass → dnb); keep aliases specific since matching is by substring. Passing stations are pooled per genre in memory (resets on cold start); failures are remembered for a while; results are logged to Supabase `station_checks` (`lib/checklog.js`). `lib/radio.js` is the Radio Browser client with mirror failover. **Tune genres, tags, blocklist and timeouts in `lib/config.js`.** `probeStream` also records whether a stream sends CORS headers (`cors`), which decides if the browser can analyse its audio.
 
 Env vars (Vercel): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (server only, never sent to browsers), `ADMIN_EMAILS`, optional `SITE_URL`. `lib/supabase-env.js` tolerates name typos. `scripts/build-meta.js` (`npm run build`) makes link-preview URLs absolute at deploy.
 
@@ -68,7 +68,7 @@ Env vars (Vercel): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_K
 | Account & sync | Email one-time code sign-in (code, not link, so it works in the home-screen app); one Supabase row per user (favorites, genres, hidden), debounced push |
 | Boot | Splash screen, "Jack in" |
 
-Browser storage keys (keep stable): `sw.favorites`, `sw.genres`, `sw.selected`, `sw.genre`, `sw.hidden`, `sw.showFavDots`, `sw.visitor`, `sw.auth`, `sw.syncUser`, `sw.syncedAt`, `sw.changedAt`, `sw.genresVersion` (one-time genre-list upgrades, e.g. adding Metal in build 32).
+Browser storage keys (keep stable): `sw.favorites`, `sw.genres`, `sw.selected`, `sw.genre`, `sw.hidden`, `sw.showFavDots`, `sw.visitor`, `sw.auth`, `sw.syncUser`, `sw.syncedAt`, `sw.changedAt`, `sw.genresVersion` (one-time genre-list upgrades, e.g. adding Metal in build 32), `sw.heard` (station IDs ever played here, newest 6000; random play excludes them; if a genre has nothing new, `fetchFresh` allows a repeat and says so).
 
 Supabase tables (`supabase/migrations/`): `user_settings` (per-user, row-level security), `plays` + admin stats function, `station_checks`, `nese_members` + `nese_signals` with functions `nese_member`, `nese_send`, `nese_inbox`, `nese_dismiss` (server-only; sends are capped at 30/hour, inboxes at 50). Sign-in email template: `supabase/templates/magic_link.html` (pasted into Supabase by hand).
 
@@ -132,6 +132,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Genres reorganized: Metal (heavy, thrash, death, black, doom…), Punk, R&B & Soul, Blues and Reggae & Ska became their own genres, and every genre got more specific styles; Metal added once to existing users' lists (build 32).
 - First-visit genre question with 5 related genres, always-visible EDIT button, editor note about the 5-at-a-time limit, splash shows just ALPHA (build 33).
 - Vibe mode: beat detection works for all music on desktop, not just kick-heavy synthwave; tap/click an asteroid to shoot it from your signal's city (75% hit chance) (build 34).
+- Discovery: random play never repeats a station you've heard (saved stations are how you return); styles match their other tag names; streams below 64 kbps (AAC 40) are rejected as too weak (build 35). Needs migration `20261109070000_low_quality_check.sql` for the dashboard to count low-quality rejections.
 
 Add a line here when shipping something notable.
 
