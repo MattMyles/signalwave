@@ -392,6 +392,9 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 .save-how { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 10px; padding: 9px 12px; border: 1px dashed rgba(255, 62, 200, 0.5); background: rgba(255, 62, 200, 0.06); font-size: 13px; line-height: 1.45; color: var(--text, #cfe9f2); }
 .save-how .save-ic { color: var(--pink, #ff3ec8); font-size: 18px; line-height: 1; text-shadow: 0 0 8px rgba(255, 62, 200, 0.7); }
 .save-how b { color: var(--pink, #ff3ec8); }
+.save-how > span:nth-child(2) { flex: 1; }
+.save-how-x { flex: none; margin: -6px -8px -6px 0; width: 32px; height: 32px; background: none; border: 0; color: var(--dim); font-size: 15px; cursor: pointer; }
+.save-how-x:hover, .save-how-x:focus-visible { color: var(--text); }
 .drawer-foot { display: flex; flex-wrap: wrap; gap: 10px; }
 .btn-ghost:disabled { opacity: 0.4; cursor: default; }
 /* Export picker: rows become checkboxes */

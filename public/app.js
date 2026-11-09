@@ -42,7 +42,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '38';
+  const BUILD = '39';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -2023,6 +2023,10 @@
   $('tabTransmit').addEventListener('click', () => setDashTab('transmit'));
 
   // The signal picker: the one playing now (unless it's the hidden track) and every saved one.
+  // The "only saved signals show up here" tip, until the listener dismisses it.
+  $('favHow').hidden = Boolean(store.get('sw.saveTipDismissed', false));
+  $('favHowX').addEventListener('click', () => { store.set('sw.saveTipDismissed', true); $('favHow').hidden = true; });
+
   function txChoices() {
     const list = [];
     const cur = state.current;
