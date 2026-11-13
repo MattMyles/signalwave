@@ -42,7 +42,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '41';
+  const BUILD = '42';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -1395,6 +1395,7 @@
   function updateGenreFlag() {
     const s = state.current;
     $('flagGenre').hidden = !s || Boolean(s.egg) || !state.selected.length;
+    $('forgetSignal').hidden = Boolean(s && s.egg);
   }
 
   function renderGenres() {
@@ -1719,6 +1720,16 @@
   $('recenter').addEventListener('click', () => { if (state.current) flyTo(state.current); });
   $('showFavDots').checked = state.showFavDots;
   $('showFavDots').addEventListener('change', (e) => { state.showFavDots = e.target.checked; store.set('sw.showFavDots', state.showFavDots); updatePoints(); });
+  // Forget signal: skip this station and never play it on this device again
+  // (synced to the listener's account if signed in).
+  $('forgetSignal').addEventListener('click', () => {
+    const s = state.current;
+    if (!s || s.egg) return;
+    state.hidden = [...new Set([...state.hidden, s.uuid])].slice(-250);
+    store.set('sw.hidden', state.hidden);
+    markChanged();
+    next('> SIGNAL FORGOTTEN — RETUNING…');
+  });
   // Wrong genre: skip now, and report it so the server stops picking this
   // station for these genres (for everyone). It may still suit other genres.
   $('flagGenre').addEventListener('click', async () => {
