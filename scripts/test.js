@@ -49,6 +49,51 @@ function icyBody(metaint, title) {
     for (const x of ['noticias,música', 'ニュース,音楽', 'новости', 'deportes,futbol', 'música cristiana', '교회,음악']) assert(!isMusicStation(tr(x)), x);
   });
   await t('translation leaves unrelated tags alone', () => { assert(!tr('host,ghost').includes('soundtrack')); assert.deepStrictEqual(tr('house,techno'), ['house', 'techno']); });
+  const { isFocused } = require('../lib/vet');
+  await t('genre focus: real classic rock stations pass', () => {
+    const cr = resolveGenre(null, 'classic rock');
+    assert(isFocused(['classic rock', '70s', '80s'], 'Rock Radio', cr));
+    assert(isFocused(['70s', '80s', 'hard rock', 'classic rock', 'blues rock'], 'KZ', cr));
+    assert(isFocused(['pop', 'classic rock'], 'X', cr));
+    assert(isFocused(['hits', 'pop', 'oldies', 'classic rock'], 'Classic Rock 101', cr));
+  });
+  await t('genre focus: hits and variety stations tagged classic rock are skipped', () => {
+    const cr = resolveGenre(null, 'classic rock');
+    assert(!isFocused(['pop', '80s', '90s', 'hits', 'top 40', 'dance', 'classic rock', 'oldies'], 'Hit FM', cr));
+    assert(!isFocused(['classic rock', 'pop', 'hip-hop', 'jazz', 'country'], 'Mix', cr));
+    assert(!isFocused(['hits', 'pop', 'classic rock'], 'Antenne', cr));
+    assert(isFocused(['pop', 'hits', 'dance'], 'Anything', null)); // Any genre stays broad
+  });
+  {
+    const { songFits } = require('../lib/songcheck');
+    const realFetch = global.fetch;
+    const catalog = {
+      'Led Zeppelin Kashmir': [{ artistName: 'Led Zeppelin', trackName: 'Kashmir (Remaster)', primaryGenreName: 'Rock', releaseDate: '2014-02-01' }, { artistName: 'Led Zeppelin', trackName: 'Kashmir', primaryGenreName: 'Rock', releaseDate: '1975-02-24' }],
+      'Dua Lipa Levitating': [{ artistName: 'Dua Lipa', trackName: 'Levitating', primaryGenreName: 'Pop', releaseDate: '2020-03-27' }],
+      'Arctic Monkeys Do I Wanna Know?': [{ artistName: 'Arctic Monkeys', trackName: 'Do I Wanna Know?', primaryGenreName: 'Alternative', releaseDate: '2013-06-19' }],
+      'Burna Boy Last Last': [{ artistName: 'Burna Boy', trackName: 'Last Last', primaryGenreName: 'Afrobeats', releaseDate: '2022-05-13' }],
+    };
+    global.fetch = async (u) => {
+      const term = new URL(u).searchParams.get('term');
+      if (term.startsWith('Down')) throw new Error('offline');
+      return { ok: true, json: async () => ({ results: catalog[term] || [] }) };
+    };
+    const cr = resolveGenre(null, 'classic rock'), rock = resolveGenre('rock'), pop = resolveGenre('pop');
+    await t('song check: classic rock song fits classic rock (original year, not the remaster)', async () => assert.strictEqual(await songFits('Led Zeppelin - Kashmir', cr), true));
+    await t('song check: pop song on a classic rock pick is rejected', async () => assert.strictEqual(await songFits('Dua Lipa - Levitating', cr), false));
+    await t('song check: 2013 rock fits Rock but not Classic Rock', async () => {
+      assert.strictEqual(await songFits('Arctic Monkeys - Do I Wanna Know?', rock), true);
+      assert.strictEqual(await songFits('Arctic Monkeys - Do I Wanna Know?', cr), false);
+    });
+    await t('song check: several genres picked, fitting one is enough', async () => assert.strictEqual(await songFits('Dua Lipa - Levitating', resolveGenres('rock,pop')), true));
+    await t('song check: unknown songs, failed lookups and broad genres never reject', async () => {
+      assert.strictEqual(await songFits('Nobody Known - Nothing', cr), null);
+      assert.strictEqual(await songFits('Down Service - Song', cr), null);
+      assert.strictEqual(await songFits('Burna Boy - Last Last', resolveGenre('world')), null);
+      assert.strictEqual(await songFits('Station jingle', pop), null);
+    });
+    global.fetch = realFetch;
+  }
   await t('music station passes', () => assert(isMusicStation(splitTags('house,techno,dance'))));
   await t('talk station rejected', () => assert(!isMusicStation(splitTags('news,talk,pop'))));
   await t('sports rejected', () => assert(!isMusicStation(splitTags('sports,rock'))));
@@ -63,7 +108,7 @@ function icyBody(metaint, title) {
   await t('station-count styles match the app genre list', () => {
     const fs = require('fs');
     const app = fs.readFileSync(require('path').join(__dirname, '../public/app.js'), 'utf8');
-    const api = fs.readFileSync(require('path').join(__dirname, '../api/genre-counts.js'), 'utf8');
+    const api = fs.readFileSync(require('path').join(__dirname, '../lib/config.js'), 'utf8');
     const appList = Object.fromEntries([...app.matchAll(/\{ id: '(\w+)', label: '[^']*', subs: \[([^\]]*)\] \}/g)].map((m) => [m[1], m[2]]));
     const apiList = Object.fromEntries([...api.split('const STYLES = {')[1].split('};')[0].matchAll(/ {2}(\w+): \[([^\]]*)\],/g)].map((m) => [m[1], m[2]]));
     assert.deepStrictEqual(Object.keys(apiList).sort(), Object.keys(appList).sort());
