@@ -94,6 +94,29 @@ function icyBody(metaint, title) {
     });
     global.fetch = realFetch;
   }
+  {
+    const { noteSong, localWeight, pickLocal } = require('../lib/artistcheck');
+    const realFetch = global.fetch;
+    const mb = { 'the pillows': 'JP', 'led zeppelin': 'GB', 'blankey jet city': 'JP' };
+    global.fetch = async (u) => {
+      const name = /artist:"([^"]+)"/.exec(decodeURIComponent(new URL(u).searchParams.get('query')))[1];
+      return { ok: true, json: async () => ({ artists: mb[name] ? [{ name, score: 100, country: mb[name] }] : [] }) };
+    };
+    await t('local artists: a Japanese band on a Tokyo station counts as local, a British one doesn\'t', async () => {
+      assert.strictEqual(await noteSong('st-local', 'JP', 'the pillows - Funny Bunny'), true);
+      assert.strictEqual(await noteSong('st-mixed', 'JP', 'Led Zeppelin - Kashmir'), false);
+      assert.strictEqual(await noteSong('st-mixed', 'JP', 'Blankey Jet City - Akai Tambourine'), true);
+      assert.strictEqual(await noteSong('st-x', 'JP', 'Unknown Band - Song'), null);
+    });
+    await t('local artists: picks lean local but mixed and unknown stations still come up', () => {
+      assert(localWeight('st-local') > localWeight('st-mixed'));
+      assert(localWeight('st-mixed') > 1);
+      const n = { 'st-local': 0, 'st-mixed': 0, 'st-new': 0 };
+      for (let i = 0; i < 3000; i++) n[pickLocal([{ uuid: 'st-local' }, { uuid: 'st-mixed' }, { uuid: 'st-new' }]).uuid]++;
+      assert(n['st-local'] > n['st-mixed'] && n['st-mixed'] > 300 && n['st-new'] > 300, JSON.stringify(n));
+    });
+    global.fetch = realFetch;
+  }
   await t('music station passes', () => assert(isMusicStation(splitTags('house,techno,dance'))));
   await t('talk station rejected', () => assert(!isMusicStation(splitTags('news,talk,pop'))));
   await t('sports rejected', () => assert(!isMusicStation(splitTags('sports,rock'))));
