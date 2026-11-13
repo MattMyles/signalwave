@@ -46,6 +46,7 @@
     $('whoEmail').textContent = j.email;
     render(j.stats);
     renderChecks(j.checks, j.directory);
+    renderReports(j.reports);
     show('dash');
   }
 
@@ -99,6 +100,80 @@
         <td>${flag(x.country_code)} ${esc([x.city, x.country].filter(Boolean).join(', '))}</td></tr>`).join('')}</tbody></table>`
       : '<p class="empty">No plays yet.</p>';
   }
+
+  // WRONG GENRE? reports from listeners, for review. AGREE = the report is
+  // right, so the station stops being served for that genre; DISMISS = the
+  // station does fit, so nothing changes. To review first, newest first.
+  function genreName(id) {
+    const t = String(id || '').replace(/^tag:/, '');
+    return t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+  }
+  const VERDICT = { pending: 'TO REVIEW', approved: 'AGREED · DROPPED', rejected: 'DISMISSED' };
+  function renderReports(list) {
+    const box = $('reports');
+    if (!list) {
+      $('reportsTitle').textContent = 'WRONG GENRE REPORTS';
+      box.innerHTML = '<p class="note">Run <span class="mono">supabase/migrations/20261113070000_genre_reports.sql</span> in Supabase to start collecting wrong-genre reports.</p>';
+      return;
+    }
+    const order = { pending: 0, approved: 1, rejected: 2 };
+    const rows = [...list].sort((a, b) => (order[a.status] - order[b.status]) || (b.created_at > a.created_at ? 1 : -1));
+    const waiting = list.filter((x) => x.status === 'pending').length;
+    $('reportsTitle').textContent = `WRONG GENRE REPORTS${waiting ? ` · ${waiting} TO REVIEW` : ''}`;
+    box.innerHTML = rows.length ? `<table>
+      <thead><tr><th>WHEN</th><th>STATION</th><th>PICKED</th><th>SONG</th><th>VERDICT</th></tr></thead>
+      <tbody>${rows.map((x) => `<tr${x.status === 'pending' ? '' : ' style="opacity:0.6"'}>
+        <td class="mono" style="white-space:nowrap;color:var(--dim)">${ago(x.created_at)}</td>
+        <td><a href="/?station=${encodeURIComponent(x.station_uuid)}" target="_blank" rel="noopener" title="Open in the app to listen">${esc(x.station_name || 'Unnamed station')}</a><br>
+          <span style="color:var(--dim)">${flag(x.country_code)} ${esc(x.city || '')}${x.station_genre ? ` · tagged ${esc(x.station_genre)}` : ''}</span></td>
+        <td>${esc(genreName(x.genre_key))}</td>
+        <td>${esc(x.song || '—')}</td>
+        <td style="white-space:nowrap">${x.status === 'pending'
+          ? `<button class="btn go" type="button" data-review="approved" data-id="${x.id}" title="The station is the wrong genre: stop playing it for ${esc(genreName(x.genre_key))}">AGREE</button>
+             <button class="btn" type="button" data-review="rejected" data-id="${x.id}" title="The station does fit: keep it">DISMISS</button>`
+          : `<span class="mono" style="color:var(--dim)">${VERDICT[x.status] || x.status}</span>
+             <button class="linkbtn" type="button" data-review="pending" data-id="${x.id}">undo</button>`}</td></tr>`).join('')}</tbody></table>
+      <p class="note">AGREE stops that station being picked for that genre (it can still come up in others). DISMISS keeps it. Your own reports from the app count straight away. Tap a station name to listen.</p>
+      ${list.some((x) => x.status === 'approved') ? `<p style="margin-top:10px"><button class="btn" type="button" id="copyReports">COPY AGREED REPORTS FOR CLAUDE</button>
+        <span class="note" id="copyMsg">Paste into a chat with Claude to tune the genre rules, so similar stations are caught too.</span></p>` : ''}`
+      : '<p class="empty">No reports yet.</p>';
+    lastReports = list;
+  }
+  let lastReports = [];
+  // Plain-text summary of agreed reports, to paste to Claude for tuning the
+  // genre rules (aliases, translations, the focus and song checks).
+  function reportsForClaude(list) {
+    const agreed = list.filter((x) => x.status === 'approved');
+    return [
+      `NEO // EARTH: ${agreed.length} wrong-genre report${agreed.length === 1 ? '' : 's'} I agreed with. Please tune the genre rules so stations like these aren't picked for these genres.`,
+      ...agreed.map((x) => `- Picked: ${genreName(x.genre_key)} (${x.genre_key}) | Station: ${x.station_name || 'Unnamed'} (${[x.city, x.country_code].filter(Boolean).join(', ')}) | matched tag: ${x.station_genre || '?'} | song: ${x.song || '?'} | uuid: ${x.station_uuid} | ${String(x.created_at).slice(0, 10)}`),
+    ].join('\n');
+  }
+  $('reports').addEventListener('click', async (e) => {
+    if (e.target.closest('#copyReports')) {
+      const text = reportsForClaude(lastReports);
+      try { await navigator.clipboard.writeText(text); $('copyMsg').textContent = 'Copied. Paste it into a chat with Claude.'; }
+      catch (_) { window.prompt('Copy this for Claude:', text); }
+      return;
+    }
+    const b = e.target.closest('[data-review]');
+    if (!b) return;
+    b.disabled = true;
+    const t = await token();
+    if (!t) return show('signin');
+    try {
+      const r = await fetch('/api/admin-stats', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'review', ids: [Number(b.dataset.id)], status: b.dataset.review }),
+      });
+      if (!r.ok) throw new Error();
+    } catch (_) {
+      b.disabled = false;
+      return;
+    }
+    load();
+  });
 
   // Why stations were turned away, from each checked station's latest result.
   const REASONS = {

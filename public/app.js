@@ -42,7 +42,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '40';
+  const BUILD = '41';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -328,7 +328,7 @@
     $('globe').classList.toggle('bouncing', Boolean(station.egg));
     if (!station.egg) hack(false);
     $('terminate').hidden = !station.egg;
-    $('flagTalk').hidden = Boolean(station.egg);
+    updateGenreFlag();
     flyTo(station);
     updateMediaSession();
     renderFavorites();
@@ -1269,7 +1269,7 @@
     if (!state.current || !state.current.egg) return;
     audio.pause();
     $('terminate').hidden = true;
-    $('flagTalk').hidden = false;
+    updateGenreFlag();
     $('globe').classList.remove('bouncing');
     next('> REMOTE USER TERMINATED — RESTORING SIGNAL…');
   });
@@ -1391,7 +1391,14 @@
   });
 
   /* ---------- Genres ---------- */
+  // WRONG GENRE? only makes sense when genres are picked (not Any).
+  function updateGenreFlag() {
+    const s = state.current;
+    $('flagGenre').hidden = !s || Boolean(s.egg) || !state.selected.length;
+  }
+
   function renderGenres() {
+    updateGenreFlag();
     const nav = $('genres');
     nav.innerHTML = '';
     for (const id of ['any', ...state.genres]) {
@@ -1405,6 +1412,7 @@
     markSelectedChips();
   }
   function markSelectedChips() {
+    updateGenreFlag();
     document.querySelectorAll('#genres .chip[data-genre]').forEach((c) => {
       const id = c.dataset.genre;
       const on = id === 'any' ? state.selected.length === 0 : state.selected.includes(id);
@@ -1711,13 +1719,26 @@
   $('recenter').addEventListener('click', () => { if (state.current) flyTo(state.current); });
   $('showFavDots').checked = state.showFavDots;
   $('showFavDots').addEventListener('change', (e) => { state.showFavDots = e.target.checked; store.set('sw.showFavDots', state.showFavDots); updatePoints(); });
-  $('flagTalk').addEventListener('click', () => {
+  // Wrong genre: skip now, and report it so the server stops picking this
+  // station for these genres (for everyone). It may still suit other genres.
+  $('flagGenre').addEventListener('click', async () => {
     const s = state.current;
-    if (!s) return;
-    state.hidden = [...new Set([...state.hidden, s.uuid])].slice(-250);
-    store.set('sw.hidden', state.hidden);
-    markChanged();
-    next('> STATION HIDDEN — RETUNING…');
+    if (!s || s.egg || !state.selected.length) return;
+    const report = {
+      visitor: visitorId(),
+      genres: [...state.selected],
+      song: state.title || null,
+      station: { uuid: s.uuid, name: s.name, city: s.city, countryCode: s.countryCode, genre: s.genre },
+    };
+    next('> WRONG GENRE REPORTED — RETUNING…');
+    const headers = { 'Content-Type': 'application/json' };
+    try {
+      if (sb && user) {
+        const { data } = await sb.auth.getSession();
+        if (data.session) headers.Authorization = `Bearer ${data.session.access_token}`;
+      }
+      await fetch('/api/feedback', { method: 'POST', headers, keepalive: true, body: JSON.stringify(report) });
+    } catch (_) { /* best-effort: the skip already happened */ }
   });
   document.addEventListener('keydown', (e) => {
     if (e.target.closest('input, textarea')) return;

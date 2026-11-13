@@ -176,7 +176,7 @@ iMessage caches previews, so a link pasted before an update may keep the old loo
 - A station that never starts within 8 s is skipped. One that was playing and
   then drops gets one automatic reconnect (at most once a minute) before the
   app moves on. Missing song titles never skip a station that's playing.
-- "Not music? Hide station" remembers hidden stations in the browser.
+- "WRONG GENRE?" skips a station and reports it; review reports in `/admin` (needs migration `20261113070000_genre_reports.sql`).
 - `USER_AGENT` in `lib/config.js` names the site (neoearthradio.com), as Radio
   Browser asks for an identifying agent. Update it if the domain changes.
 

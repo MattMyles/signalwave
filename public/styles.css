@@ -218,6 +218,8 @@ button:focus-visible, label:focus-visible, input:focus-visible {
   color: var(--dim); font-size: 10px; letter-spacing: 0.14em; font-weight: 600;
 }
 .flag:hover { color: var(--magenta); }
+.flags { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 4px 18px; }
+.flags .flag { margin: 0; }
 
 /* Genres */
 .genres {
