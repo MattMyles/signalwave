@@ -153,6 +153,8 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 
 - Local artists preferred: picks lean towards stations whose songs are by artists from the station's own country (MusicBrainz lookup), without skipping stations that mix in famous international artists. Purpose in this guide updated: exact genre plus artists from that country (server only).
 
+- Psychedelic Rock: alternate names (psychedelic, psych rock, acid rock, space rock, krautrock) and translations (サイケ, psicodelia, psychédélique, психодел…); psytrance stations that match the tag are stopped by the song check (Matt's test case: Flower Travellin' Band) (server only).
+
 Add a line here when shipping something notable.
 
 ## Known limits and ideas not done
