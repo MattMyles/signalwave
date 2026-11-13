@@ -178,6 +178,7 @@ iMessage caches previews, so a link pasted before an update may keep the old loo
   app moves on. Missing song titles never skip a station that's playing.
 - "FORGET SIGNAL" skips a station and never plays it on that device again.
 - "WRONG GENRE?" skips a station and reports it; review reports in `/admin` (needs migration `20261113070000_genre_reports.sql`).
+- Review alert email: when more than 3 reports are waiting, the admin gets one email. Sign up at resend.com, create an API key, and add `RESEND_API_KEY` in Vercel (optional `NOTIFY_EMAIL` to send somewhere other than `ADMIN_EMAILS`; `NOTIFY_FROM` once neoearthradio.com is verified in Resend).
 - `USER_AGENT` in `lib/config.js` names the site (neoearthradio.com), as Radio
   Browser asks for an identifying agent. Update it if the domain changes.
 

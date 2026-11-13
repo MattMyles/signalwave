@@ -135,6 +135,11 @@ function icyBody(metaint, title) {
     assert.strictEqual(nativeWords('rock', 'JP')[0], 'ロック');
     assert.deepStrictEqual(nativeWords('jazz', 'GB'), []);
   });
+  await t('review alert emails once when reports waiting go over 3', () => {
+    const { crossedLine } = require('../lib/notify');
+    assert(!crossedLine(2, 3)); assert(crossedLine(3, 4)); assert(crossedLine(2, 5));
+    assert(!crossedLine(4, 5)); assert(!crossedLine(9, 10));
+  });
   await t('music station passes', () => assert(isMusicStation(splitTags('house,techno,dance'))));
   await t('talk station rejected', () => assert(!isMusicStation(splitTags('news,talk,pop'))));
   await t('sports rejected', () => assert(!isMusicStation(splitTags('sports,rock'))));

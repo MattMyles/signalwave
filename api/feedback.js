@@ -9,6 +9,7 @@
 const { serviceEnv, sbHeaders, verifyUser, adminEmails } = require('../lib/supabase-env');
 const { sendJson, readJson, bearer } = require('../lib/http');
 const { forget } = require('../lib/reports');
+const { crossedLine, sendReviewAlert } = require('../lib/notify');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const GENRE_ID = /^(tag:)?[a-z0-9 &'\-]{2,40}$/;
@@ -19,6 +20,22 @@ const text = (v, max) => {
   const s = String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim();
   return s ? s.slice(0, max) : null;
 };
+
+// Email the admin when this report takes the number waiting for review over
+// the line (lib/notify.js). Best-effort: a failure never affects the report.
+async function alertIfPilingUp(env, added, req) {
+  if (!process.env.RESEND_API_KEY) return;
+  try {
+    const r = await fetch(`${env.url}/rest/v1/genre_reports?select=genre_key,station_name,city,country_code,song&status=eq.pending&order=created_at.desc&limit=200`, {
+      headers: sbHeaders(env.key), signal: AbortSignal.timeout(4000),
+    });
+    if (!r.ok) return;
+    const pending = await r.json();
+    if (!crossedLine(pending.length - added, pending.length)) return;
+    const site = process.env.SITE_URL || `https://${req.headers['x-forwarded-host'] || req.headers.host}`;
+    await sendReviewAlert(pending, site);
+  } catch (_) { /* alerts are best-effort */ }
+}
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'POST only' });
@@ -63,6 +80,7 @@ module.exports = async function handler(req, res) {
     });
     if (!r.ok) return sendJson(res, 502, { error: 'Could not save the report.' });
     forget(); // this server instance picks the report up straight away
+    if (!isAdmin) await alertIfPilingUp(env, rows.length, req);
     res.statusCode = 204;
     res.end();
   } catch (_) {
