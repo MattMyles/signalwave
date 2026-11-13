@@ -117,6 +117,24 @@ function icyBody(metaint, title) {
     });
     global.fetch = realFetch;
   }
+  await t('genre words: styles in many languages match, and the longest word wins', () => {
+    const { translateTags } = require('../lib/translate');
+    const m = (tag, main, style) => matchesGenre(translateTags(splitTags(tag)), resolveGenre(main || null, style));
+    assert(m('クラシックロック', null, 'classic rock')); assert(!m('クラシックロック', 'classical'));
+    assert(m('классический рок', null, 'classic rock')); assert(!m('классический рок', 'classical'));
+    assert(m('ヘヴィメタル', null, 'heavy metal')); assert(m('rock progresivo', null, 'progressive rock'));
+    assert(m('anos 80', null, '80s')); assert(m('liedermacher', null, 'singer-songwriter'));
+    assert(!m('サイケデリックトランス', null, 'psychedelic rock')); assert(m('サイケデリックトランス', null, 'psytrance'));
+    assert(m('música mexicana', 'latin')); assert(m('ボサノヴァ', 'jazz')); assert(m('sertanejo', 'country'));
+    assert(!m('スカイ', null, 'ska')); assert(!m('dansk', 'electronic'));
+  });
+  await t('genre words: country searches use the local language', () => {
+    const { nativeWords } = require('../lib/genre-words');
+    assert.strictEqual(nativeWords('psychedelic rock', 'JP')[0], 'サイケ');
+    assert.strictEqual(nativeWords('heavy metal', 'RU')[0], 'хэви-метал');
+    assert.strictEqual(nativeWords('rock', 'JP')[0], 'ロック');
+    assert.deepStrictEqual(nativeWords('jazz', 'GB'), []);
+  });
   await t('music station passes', () => assert(isMusicStation(splitTags('house,techno,dance'))));
   await t('talk station rejected', () => assert(!isMusicStation(splitTags('news,talk,pop'))));
   await t('sports rejected', () => assert(!isMusicStation(splitTags('sports,rock'))));
