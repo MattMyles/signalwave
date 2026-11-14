@@ -42,7 +42,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '44';
+  const BUILD = '45';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -326,6 +326,7 @@
 
     renderStation(station);
     $('globe').classList.toggle('bouncing', Boolean(station.egg));
+    if (window.SignalVibes && inVibe()) window.SignalVibes.setEgg(Boolean(station.egg));
     if (!station.egg) hack(false);
     $('terminate').hidden = !station.egg;
     updateGenreFlag();
@@ -736,10 +737,13 @@
     $('vibeBtn').setAttribute('aria-label', on ? 'Leave vibe mode' : 'Vibe mode: full-screen globe');
     if (on) {
       closeDrawer();
-      if (!reduced && window.SignalVibes) window.SignalVibes.start($('fx'), vibeLevels, signalOnScreen);
+      if (!reduced && window.SignalVibes) {
+        window.SignalVibes.start($('fx'), vibeLevels, signalOnScreen, globeOnScreen);
+        window.SignalVibes.setEgg(Boolean(state.current && state.current.egg));
+      }
       enterFullscreen();
       if (!state.started) start(true);
-      if (globe && state.current && !reduced) globe.pointOfView({ altitude: state.current.egg ? 2.6 : 2.0 }, 1200);
+      if (globe && state.current && !reduced) globe.pointOfView({ altitude: state.current.egg ? eggAltitude() : 2.0 }, 1200);
     } else {
       if (window.SignalVibes) window.SignalVibes.stop();
       exitFullscreen();
@@ -774,10 +778,64 @@
     const box = globeEl.getBoundingClientRect();
     return p && Number.isFinite(p.x) ? { x: p.x + box.left, y: p.y + box.top } : null;
   }
+  // How far out the camera sits for the Easter egg. In vibe mode on a narrow
+  // (phone) screen it pulls back further, leaving room for the basketballs' orbits.
+  function eggAltitude() {
+    return document.body.classList.contains('vibe') && window.innerWidth < 600 ? 4.6 : 2.6;
+  }
+  // The globe's centre and on-screen radius, so vibe mode's basketballs can
+  // orbit it. During the Easter egg's dribble it's the middle of the bounce,
+  // so the balls circle steadily while the globe bounces inside their orbits.
+  function globeOnScreen() {
+    if (!globe || !globe.camera || !globe.getGlobeRadius) return null;
+    const box = globeEl.getBoundingClientRect(); // the un-bounced frame
+    const cam = globe.camera();
+    const R = globe.getGlobeRadius();
+    const d = cam.position.length();
+    if (!(d > R) || !box.height) return null;
+    const half = Math.tan((cam.fov * Math.PI) / 360);
+    const lift = globeEl.classList.contains('bouncing') ? box.height * 0.07 : 0; // the dribble rises up to 14%
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 - lift, r: ((box.height / 2) * Math.tan(Math.asin(R / d))) / half };
+  }
+  // Easter egg announcer: a shot that hits one of vibe mode's basketballs plays
+  // one of these calls (public/media/jam). They play through a small Web Audio
+  // mixer so they layer over the track instead of pausing it on iPhone. Sound
+  // is unlocked and the clips loaded inside a tap (browsers require one).
+  const JAM_SOUNDS = ['from-downtown', 'its-good', 'hes-on-fire', 'is-it-the-shoes', 'boomshakalaka'];
+  let jamCtx = null, jamBufs = null;
+  function jamPrime() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!jamCtx) jamCtx = new AC();
+      if (jamCtx.state === 'suspended') jamCtx.resume();
+      if (jamBufs) return;
+      jamBufs = {};
+      for (const name of JAM_SOUNDS) {
+        fetch(`/media/jam/${name}.mp3`).then((r) => r.arrayBuffer())
+          .then((a) => new Promise((ok, no) => jamCtx.decodeAudioData(a, ok, no)))
+          .then((buf) => { jamBufs[name] = buf; }).catch(() => {});
+      }
+    } catch (_) { /* no sound effects here */ }
+  }
+  function jamCall(name) {
+    const buf = jamBufs && jamBufs[name];
+    if (!jamCtx || !buf) return;
+    try {
+      const src = jamCtx.createBufferSource();
+      const gain = jamCtx.createGain();
+      src.buffer = buf; gain.gain.value = 0.9;
+      src.connect(gain); gain.connect(jamCtx.destination);
+      src.start();
+    } catch (_) { /* ignore */ }
+  }
+  if (window.SignalVibes) window.SignalVibes.onHit = jamCall;
+
   // Tap (phone) or click (computer) an asteroid to shoot it from your signal's
   // city (75% hit chance). Taps that miss every asteroid fall through to the globe.
   document.addEventListener('pointerdown', (e) => {
     if (!inVibe() || !window.SignalVibes || e.target.closest('button')) return;
+    if (state.current && state.current.egg) jamPrime();
     if (window.SignalVibes.shootAt(e.clientX, e.clientY)) { e.preventDefault(); e.stopPropagation(); }
   }, true);
   $('vibeBtn').addEventListener('click', () => setVibe(!inVibe()));
@@ -1081,7 +1139,7 @@
     globe.htmlElementsData([{ lat: s.lat, lng: s.lng, city: s.city }]);
     // The hidden track pulls back so the whole globe can dribble like a ball.
     // Vibe mode pulls back so the whole globe sits among the effects.
-    const close = s.egg ? 2.6 : document.body.classList.contains('vibe') ? 2.0 : narrow.matches ? 0.9 : 0.8;
+    const close = s.egg ? eggAltitude() : document.body.classList.contains('vibe') ? 2.0 : narrow.matches ? 0.9 : 0.8;
     if (reduced) { globe.pointOfView({ lat: s.lat, lng: s.lng, altitude: close }, 0); scheduleDrift(); return; }
     globe.pointOfView({ lat: s.lat, lng: s.lng, altitude: 2.2 }, 1500);
     setTimeout(() => {
@@ -1096,7 +1154,7 @@
     idleTimer = setTimeout(() => {
       if (!globe || !state.current) return;
       const s = state.current;
-      globe.pointOfView({ lat: s.lat, lng: s.lng, altitude: s.egg ? 2.6 : 1.8 }, reduced ? 0 : 2500);
+      globe.pointOfView({ lat: s.lat, lng: s.lng, altitude: s.egg ? eggAltitude() : 1.8 }, reduced ? 0 : 2500);
       setTimeout(() => { globe.controls().autoRotate = !reduced; globe.controls().autoRotateSpeed = 0.25; }, 2600);
     }, 8000);
   }
@@ -1323,6 +1381,7 @@
     $('terminate').hidden = true;
     updateGenreFlag();
     $('globe').classList.remove('bouncing');
+    if (window.SignalVibes) window.SignalVibes.setEgg(false);
     next('> REMOTE USER TERMINATED — RESTORING SIGNAL…');
   });
 
@@ -1341,6 +1400,7 @@
   $('addForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (isEgg($('addLink').value)) {
+      jamPrime();
       $('addLink').value = '';
       addMsg('');
       closeDrawer();

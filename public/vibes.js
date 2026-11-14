@@ -16,6 +16,9 @@
   let levels = () => ({ bass: 0, energy: 0, beat: false });
   let origin = () => null; // screen position of the playing signal's city, for the listener's own shots
   let stars = [], ships = [], rocks = [], bolts = [], rings = [], debris = [], flashes = [], ufo = null, texts = [];
+  // Easter egg (Wrecking Crew): flaming basketballs orbiting the globe, and their fireworks.
+  let egg = false, balls = [], embers = [], sparks = [], minis = [], hoops = [], pops = [], later = [];
+  let globeInfo = () => null; // { x, y, r }: the globe's centre and radius on screen, from app.js
   let nextShip = 0, nextRock = 0, nextUfo = 0, pulse = 0, beats = 0, lastRing = 0;
 
   function resize() {
@@ -136,6 +139,208 @@
     return lines;
   }
 
+  /* ---------- Easter egg: flaming basketballs ---------- */
+  // While the hidden Wrecking Crew track plays, five flaming basketballs orbit
+  // the globe on tilted orbits, passing behind it and out the other side.
+  // Shoot one and it bursts into basketball fireworks: a rim and net, sparks,
+  // a shower of tiny basketballs and a shout. When the track ends they all go
+  // off at once.
+  const BALL_COUNT = 5;
+  const ORANGE = '#ff7a1a';
+  // Each hit gets an announcer call: the shout on screen and its sound
+  // (public/media/jam/<sound>.mp3, played by app.js through onHit).
+  const CALLS = [
+    { text: 'FROM DOWNTOWN!', sound: 'from-downtown' },
+    { text: "IT'S GOOD!", sound: 'its-good' },
+    { text: "HE'S ON FIRE!", sound: 'hes-on-fire' },
+    { text: 'IS IT THE SHOES?!', sound: 'is-it-the-shoes' },
+    { text: 'BOOMSHAKALAKA!', sound: 'boomshakalaka' },
+  ];
+  let lastCall = -1;
+  function nextCall() { // random, never the same twice in a row
+    let k = (Math.random() * CALLS.length) | 0;
+    if (k === lastCall) k = (k + 1) % CALLS.length;
+    lastCall = k;
+    return CALLS[k];
+  }
+  function newBall(i) {
+    // On a tall screen the orbits stand upright (long axis vertical, steeply
+    // tilted) so they stay on screen; on wide screens they go any way.
+    const tall = h > w * 1.2;
+    return {
+      tilt: tall ? (Math.random() < 0.5 ? -1 : 1) * rand(1.0, 1.35) : rand(-1.3, 1.3),
+      node: tall ? Math.PI / 2 + rand(-0.35, 0.35) : rand(0, TAU),
+      a: tall ? rand(1.12, 1.45) : rand(1.22, 1.7), th: rand(0, TAU) + i * 1.3,
+      speed: rand(0.5, 0.95) * (Math.random() < 0.5 ? -1 : 1), spin: rand(0, TAU),
+      x: -999, y: -999, vx: 0, vy: 0, r: 10, depth: 0, front: false, gone: 0,
+    };
+  }
+  // Moves a ball along its tilted orbit and works out whether the globe hides it.
+  function placeBall(b, g, dt) {
+    b.th += b.speed * dt;
+    b.spin += b.speed * dt * 6;
+    // Never wider than the screen allows.
+    const R = Math.min(g.r * b.a, Math.max(w, h) * 0.46);
+    const ox = Math.cos(b.th) * R, oy = Math.sin(b.th) * R * Math.cos(b.tilt);
+    const z = Math.sin(b.th) * R * Math.sin(b.tilt); // towards the viewer when positive
+    const x = g.x + ox * Math.cos(b.node) - oy * Math.sin(b.node);
+    const y = g.y + ox * Math.sin(b.node) + oy * Math.cos(b.node);
+    if (dt > 0 && b.x > -900) { b.vx = (x - b.x) / dt; b.vy = (y - b.y) / dt; }
+    b.x = x; b.y = y;
+    b.depth = z / R;
+    b.r = Math.max(9, g.r * 0.085) * (1 + b.depth * 0.2);
+    b.front = !(z < 0 && Math.hypot(x - g.x, y - g.y) < g.r + b.r * 0.4);
+  }
+  function drawBall(b) {
+    const r = b.r;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.translate(b.x, b.y);
+    ctx.globalAlpha = 1;
+    const grd = ctx.createRadialGradient(-r * 0.35, -r * 0.35, r * 0.1, 0, 0, r);
+    grd.addColorStop(0, '#ffb45e'); grd.addColorStop(0.65, '#f0640c'); grd.addColorStop(1, '#a8400a');
+    ctx.fillStyle = grd;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+    // Seams, turning as the ball spins.
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.clip();
+    ctx.rotate(b.spin);
+    ctx.strokeStyle = '#2a1204'; ctx.lineWidth = Math.max(1, r * 0.09);
+    ctx.beginPath();
+    ctx.moveTo(-r, 0); ctx.lineTo(r, 0);
+    ctx.moveTo(0, -r); ctx.lineTo(0, r);
+    ctx.moveTo(-r * 0.32, -r); ctx.quadraticCurveTo(-r * 0.95, 0, -r * 0.32, r);
+    ctx.moveTo(r * 0.32, -r); ctx.quadraticCurveTo(r * 0.95, 0, r * 0.32, r);
+    ctx.stroke();
+    ctx.restore();
+  }
+  function emitFlames(b, dt) {
+    if (embers.length > 320) return;
+    const sp = Math.hypot(b.vx, b.vy) || 1;
+    const dx = b.vx / sp, dy = b.vy / sp;
+    const n = Math.random() < dt * 60 * 0.9 ? 2 : 1;
+    for (let k = 0; k < n; k++) {
+      embers.push({
+        x: b.x - dx * b.r * 0.5 + rand(-b.r, b.r) * 0.35, y: b.y - dy * b.r * 0.5 + rand(-b.r, b.r) * 0.35,
+        vx: -dx * rand(20, 70) + rand(-15, 15), vy: -dy * rand(20, 70) + rand(-40, -10),
+        life: rand(0.25, 0.55), max: 0.55, s: rand(0.45, 0.8) * b.r,
+      });
+    }
+  }
+  function burst(x, y, n, colors, power) {
+    for (let k = 0; k < n; k++) {
+      const a = rand(0, TAU), v = rand(0.3, 1) * power;
+      sparks.push({ x, y, px: x, py: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rand(0.7, 1.4), max: 1.4, c: pick(colors) });
+    }
+  }
+  // Basketball fireworks.
+  function popBall(b, shout) {
+    const { x, y, r } = b;
+    flashes.push({ x, y, r: r * 1.8, t: 0, c: ORANGE });
+    hoops.push({ x, y, r, t: 0 });
+    burst(x, y, 46, [ORANGE, ORANGE, '#fcee0a', '#ffffff', '#ff3ec8'], 330);
+    later.push({ t: 0.32, x: x + rand(-r, r), y: y + rand(-r, r) }); // a second, crackling burst
+    for (let k = 0; k < 7; k++) {
+      const a = rand(-Math.PI * 0.95, -Math.PI * 0.05);
+      minis.push({ x, y, vx: Math.cos(a) * rand(70, 240), vy: Math.sin(a) * rand(120, 300), r: rand(3.5, 6.5), rot: rand(0, TAU), spin: rand(-9, 9), life: rand(1.4, 2.2), max: 2.2 });
+    }
+    if (shout) pops.push({ text: shout, x, y: y - r - 8, t: 0 });
+    b.gone = rand(3.5, 5.5); b.x = -999; b.front = false;
+  }
+  function drawEgg(now, dt) {
+    const g = globeInfo();
+    if (g && egg) {
+      for (let i = 0; i < balls.length; i++) {
+        const b = balls[i];
+        if (b.gone > 0) { b.gone -= dt; if (b.gone <= 0) balls[i] = newBall(i); continue; }
+        placeBall(b, g, dt);
+        if (b.front) emitFlames(b, dt);
+      }
+    }
+    // Flames (drawn first, so the balls sit on top of their fire).
+    for (let i = embers.length - 1; i >= 0; i--) {
+      const e = embers[i];
+      e.life -= dt;
+      if (e.life <= 0) { embers.splice(i, 1); continue; }
+      e.x += e.vx * dt; e.y += e.vy * dt;
+      const k = e.life / e.max;
+      ctx.globalAlpha = Math.min(1, k * 1.6) * 0.85;
+      ctx.fillStyle = k > 0.65 ? '#fff1a0' : k > 0.35 ? '#ffaa00' : '#ff3d00';
+      ctx.beginPath(); ctx.arc(e.x, e.y, Math.max(0.5, e.s * k), 0, TAU); ctx.fill();
+    }
+    if (egg) balls.forEach((b) => { if (b.front && b.gone <= 0) drawBall(b); });
+    ctx.globalCompositeOperation = 'lighter';
+    // Second bursts.
+    for (let i = later.length - 1; i >= 0; i--) {
+      const l = later[i];
+      l.t -= dt;
+      if (l.t <= 0) { later.splice(i, 1); burst(l.x, l.y, 18, ['#ffffff', '#fcee0a'], 170); }
+    }
+    // Sparks: falling streaks.
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const p = sparks[i];
+      p.life -= dt;
+      if (p.life <= 0) { sparks.splice(i, 1); continue; }
+      p.px = p.x; p.py = p.y;
+      p.vx *= 0.975; p.vy = p.vy * 0.975 + 240 * dt;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      ctx.globalAlpha = Math.min(1, p.life / 0.5);
+      ctx.strokeStyle = p.c; ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.moveTo(p.px - (p.x - p.px) * 2, p.py - (p.y - p.py) * 2); ctx.lineTo(p.x, p.y); ctx.stroke();
+    }
+    // The rim and net, dropping and fading.
+    for (let i = hoops.length - 1; i >= 0; i--) {
+      const hp = hoops[i];
+      hp.t += dt;
+      if (hp.t > 0.9) { hoops.splice(i, 1); continue; }
+      const k = hp.t / 0.9, rw = hp.r * (1.6 + k * 2.4), rh = rw * 0.28, hy = hp.y + k * 22;
+      ctx.globalAlpha = (1 - k) * 0.95;
+      ctx.strokeStyle = ORANGE; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.ellipse(hp.x, hy, rw, rh, 0, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.globalAlpha = (1 - k) * 0.6;
+      ctx.beginPath();
+      for (let n = -3; n <= 3; n++) {
+        const tx = hp.x + (n / 3) * rw, bx2 = hp.x + (n / 3) * rw * 0.55;
+        ctx.moveTo(tx, hy); ctx.lineTo(bx2, hy + rw * 0.9);
+      }
+      ctx.moveTo(hp.x - rw * 0.8, hy + rw * 0.35); ctx.lineTo(hp.x + rw * 0.8, hy + rw * 0.35);
+      ctx.moveTo(hp.x - rw * 0.65, hy + rw * 0.65); ctx.lineTo(hp.x + rw * 0.65, hy + rw * 0.65);
+      ctx.stroke();
+    }
+    // A shower of tiny basketballs.
+    for (let i = minis.length - 1; i >= 0; i--) {
+      const m = minis[i];
+      m.life -= dt;
+      if (m.life <= 0 || m.y > h + 20) { minis.splice(i, 1); continue; }
+      m.vy += 380 * dt; m.x += m.vx * dt; m.y += m.vy * dt; m.rot += m.spin * dt;
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = Math.min(1, m.life / 0.6);
+      ctx.translate(m.x, m.y); ctx.rotate(m.rot);
+      ctx.fillStyle = '#f0640c'; ctx.beginPath(); ctx.arc(0, 0, m.r, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#2a1204'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-m.r, 0); ctx.lineTo(m.r, 0); ctx.moveTo(0, -m.r); ctx.lineTo(0, m.r); ctx.stroke();
+      ctx.restore();
+    }
+    // Shouts.
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.textAlign = 'center';
+    for (let i = pops.length - 1; i >= 0; i--) {
+      const p = pops[i];
+      p.t += dt;
+      if (p.t > 1.3) { pops.splice(i, 1); continue; }
+      const k = p.t / 1.3;
+      const size = 16 + Math.min(1, p.t * 6) * 12;
+      ctx.font = `700 ${size.toFixed(1)}px "Chakra Petch", system-ui, sans-serif`;
+      ctx.globalAlpha = k > 0.7 ? (1 - k) / 0.3 : 1;
+      const x = Math.min(w - 12 - ctx.measureText(p.text).width / 2, Math.max(12 + ctx.measureText(p.text).width / 2, p.x));
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+      ctx.strokeText(p.text, x, p.y - k * 34);
+      ctx.fillStyle = k < 0.12 ? '#ffffff' : '#fcee0a';
+      ctx.fillText(p.text, x, p.y - k * 34);
+    }
+    ctx.globalCompositeOperation = 'lighter';
+  }
+
   /* ---------- Frame ---------- */
   function frame(now) {
     if (!running) return;
@@ -236,12 +441,36 @@
       ctx.globalAlpha = 0.08 + r.hit * 0.2; ctx.fillStyle = r.color; ctx.fill();
     }
 
+    drawEgg(now, dt);
+
     // Laser bolts; an asteroid they hit blows apart.
     for (let i = bolts.length - 1; i >= 0; i--) {
       const b = bolts[i];
       const px = b.x, py = b.y;
       b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
       if (b.life <= 0) { bolts.splice(i, 1); continue; }
+      if (b.player && egg) {
+        // A shot meant to hit a basketball curves onto it as the ball swings round its orbit.
+        const tgt = b.home;
+        if (tgt && tgt.gone <= 0 && tgt.front) {
+          const want = Math.atan2(tgt.y - b.y, tgt.x - b.x), have = Math.atan2(b.vy, b.vx);
+          let turn = want - have;
+          turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+          const a = have + Math.max(-7 * dt, Math.min(7 * dt, turn)), sp = Math.hypot(b.vx, b.vy);
+          b.vx = Math.cos(a) * sp; b.vy = Math.sin(a) * sp;
+          b.life = Math.max(b.life, 0.2);
+        }
+        for (const ball of balls) {
+          if (ball.gone > 0 || !ball.front || ball === b.ignore) continue;
+          if (segDist(ball.x, ball.y, px, py, b.x, b.y) < ball.r + 3) {
+            const call = nextCall();
+            popBall(ball, call.text);
+            if (window.SignalVibes.onHit) window.SignalVibes.onHit(call.sound);
+            b.life = 0; break;
+          }
+        }
+        if (b.life <= 0) { bolts.splice(i, 1); continue; }
+      }
       for (let k = rocks.length - 1; k >= 0; k--) {
         const r = rocks[k];
         if (r === b.ignore) continue; // a missed shot flies past its target
@@ -442,7 +671,10 @@
     let a = Math.atan2(ty - o.y, tx - o.x);
     const hit = Math.random() < PLAYER_HIT_CHANCE;
     if (!hit) a += (Math.random() < 0.5 ? -1 : 1) * Math.atan2(target.r + 24, d);
-    bolts.push({ x: o.x, y: o.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, c: '#fcee0a', life: d / speed + 0.6, player: true, ignore: hit ? null : target });
+    bolts.push({
+      x: o.x, y: o.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, c: '#fcee0a', life: d / speed + 0.6, player: true,
+      ignore: hit ? null : target, home: hit && 'tilt' in target ? target : null, // basketballs: hits home in
+    });
     flashes.push({ x: o.x, y: o.y, r: 6, t: 0.3, c: '#fcee0a' }); // muzzle flash
     return true;
   }
@@ -450,8 +682,25 @@
   window.SignalVibes = {
     // Tap/click at (x, y): fires if an asteroid is there. Returns true if it fired.
     shootAt(x, y) {
-      const target = rocks.find((r) => Math.hypot(r.x - x, r.y - y) < r.r + 22);
-      return target ? fireAt(target) : false;
+      const targets = [
+        ...rocks.map((r) => ({ t: r, d: Math.hypot(r.x - x, r.y - y) - r.r - 22 })),
+        ...(egg ? balls.filter((b) => b.front && b.gone <= 0).map((b) => ({ t: b, d: Math.hypot(b.x - x, b.y - y) - b.r - 26 })) : []),
+      ].filter((c) => c.d < 0).sort((a, b) => a.d - b.d);
+      return targets.length ? fireAt(targets[0].t) : false;
+    },
+    // Called with a sound name when the listener's shot hits a basketball (set by app.js).
+    onHit: null,
+    // Where the basketballs are now (for tests and debugging).
+    eggBalls() { return balls.filter((b) => b.front && b.gone <= 0).map((b) => ({ x: b.x, y: b.y, r: b.r })); },
+    // The Easter egg track started (true) or ended (false). Ending sets every
+    // basketball off at once.
+    setEgg(on) {
+      if (on === egg) return;
+      egg = on;
+      if (on) { balls = Array.from({ length: BALL_COUNT }, (_, i) => newBall(i)); return; }
+      const shown = balls.filter((b) => b.front && b.gone <= 0 && b.x > -900);
+      shown.forEach((b, i) => popBall(b, i === 0 ? 'FINAL BUZZER!' : null));
+      balls = [];
     },
     // Spacebar: fires at the asteroid nearest the signal (on screen). Returns true if it fired.
     shootNearest() {
@@ -462,10 +711,11 @@
       const target = onScreen.reduce((best, r) => (Math.hypot(r.x - o.x, r.y - o.y) < Math.hypot(best.x - o.x, best.y - o.y) ? r : best));
       return fireAt(target);
     },
-    start(canvasEl, levelsFn, originFn) {
+    start(canvasEl, levelsFn, originFn, globeFn) {
       canvas = canvasEl; ctx = canvas.getContext('2d');
       if (levelsFn) levels = levelsFn;
       if (originFn) origin = originFn;
+      if (globeFn) globeInfo = globeFn;
       resize();
       if (running) return;
       running = true; last = 0;
@@ -479,6 +729,7 @@
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
       ships = []; rocks = []; bolts = []; rings = []; debris = []; flashes = []; texts = []; ufo = null;
+      egg = false; balls = []; embers = []; sparks = []; minis = []; hoops = []; pops = []; later = [];
       if (ctx) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); }
     },
   };
