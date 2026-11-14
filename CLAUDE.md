@@ -53,13 +53,14 @@ Env vars (Vercel): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_K
 | Section | What's there |
 |---|---|
 | (top) | `state`, `store` (localStorage wrapper), `CATALOG` of genres/sub-genres, timing constants |
+| Frame cap | Wraps `requestAnimationFrame`/`cancelAnimationFrame` so every animation (globe.gl, visualizer, vibes.js) draws at `IDLE_FPS` 30 while the globe drifts and `MOVING_FPS` 60 while something moves: a drag (`frames.drag`), a camera flight (`globe.pointOfView` with a duration calls `smoothFor`), the scan spin (`frames.fast`), vibe mode. Never 120 on ProMotion screens |
 | Audio | Two `<audio>` elements: plain, and CORS-enabled feeding a Web Audio analyser (not used on iOS). `playUrl`, stall timer (8 s), one reconnect per minute, `troubled()` |
 | Station fetching | Queue of two vetted stations, `next()`, `tune()`, `prev()` |
 | Listening stats | `recordPlay` after 30 s |
 | HUD | Song/station display, decode animation, `status()` line, scrolling long text, Spotify/Apple Music links |
 | Visualizer | Bar visualizer (real analyser data when available, animated fake otherwise) |
 | Vibe mode | `vibeLevels()` (bass/energy/beat from analyser, or a fake groove: genre-matched BPM via `GROOVES`, beat-locked for the Easter egg), `setVibe()`, full-screen helpers |
-| Globe | globe.gl setup, auto-rebuild if iOS drops the WebGL context, arcs, rings, points, `flyTo()`, idle drift |
+| Globe | globe.gl setup, auto-rebuild if iOS drops the WebGL context, arcs, rings, points, `flyTo()`, idle drift. Kept to ~50 draw calls a frame (each separate mesh costs CPU every frame): country dots are grouped into one MultiPolygon feature per colour, towers/past stations/beam are one merged mesh (`pointsMerge`), and saved stations are dots in the labels layer (`onLabelClick`, `labelLabel`) so they stay tappable |
 | Favorites | Save/remove, drawer list, globe dots |
 | Sharing stations | `/?station=<uuid>` links, paste-to-add, export/import JSON |
 | Easter egg | `EGG` station, `playEgg()`, `hack()` status lock, Terminate Remote User |
@@ -175,6 +176,8 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Easter egg basketballs restyled as neon wireframe with smooth tapering fire tails and dashed orbit lines; they orbit closer to the Earth, ride along with its dribble, and move ~20% slower (build 46).
 
 - Incoming transmissions no longer come back after ADD or ✕ (a refresh already on its way could restore them, and a failed delete was never retried); duplicate sends of one station show as one row; the TRANSMIT tab is now TRANSMISSIONS (build 47).
+
+- Lighter on the CPU: the globe draws in ~50 batches a frame instead of ~430 (countries grouped by colour, towers merged), and animations are capped at 30 fps while the globe drifts and 60 while it moves, instead of every screen refresh (120 on ProMotion Macs). Saved-station dots are now flat discs; tap and hover work as before (build 48).
 
 Add a line here when shipping something notable.
 

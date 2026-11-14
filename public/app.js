@@ -15,6 +15,45 @@
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const narrow = matchMedia('(max-width: 899px)');
 
+  /* ---------- Frame cap ----------
+     Every animation here (globe.gl's loops, the visualizer, vibe mode) runs on
+     requestAnimationFrame, which fires once per display refresh: 120 times a
+     second on ProMotion screens. Nothing needs that, so frames are capped where
+     they're requested: 60 fps while something moves (a drag, a flight to a city,
+     the scan spin, vibe mode), 30 fps while the globe just drifts. Everything
+     still draws in the same frames and keeps its speed (motion is timed, not
+     counted in frames). Raise IDLE_FPS to 60 if the drift ever looks choppy. */
+  const IDLE_FPS = 30, MOVING_FPS = 60;
+  const frames = { last: -1, until: 0, drag: false, fast: () => false };
+  // Keep frames at the moving rate for the next `ms`.
+  const smoothFor = (ms) => { frames.until = Math.max(frames.until, performance.now() + ms); };
+  {
+    const raf = window.requestAnimationFrame.bind(window);
+    const caf = window.cancelAnimationFrame.bind(window);
+    const waiting = new Map(); // our id → the browser's id for the frame it's waiting on
+    let nextId = 2 ** 30; // well clear of the browser's own ids
+    const allowed = (t) => {
+      if (t === frames.last) return true; // other callbacks in a frame that's drawing
+      const moving = frames.drag || performance.now() < frames.until || frames.fast() || document.body.classList.contains('vibe');
+      if (t - frames.last < 1000 / (moving ? MOVING_FPS : IDLE_FPS) - 4) return false;
+      frames.last = t;
+      return true;
+    };
+    window.requestAnimationFrame = (cb) => {
+      const id = nextId++;
+      const run = (t) => {
+        if (!allowed(t)) { waiting.set(id, raf(run)); return; }
+        waiting.delete(id);
+        cb(t);
+      };
+      waiting.set(id, raf(run));
+      return id;
+    };
+    window.cancelAnimationFrame = (id) => {
+      if (waiting.has(id)) { caf(waiting.get(id)); waiting.delete(id); } else caf(id);
+    };
+  }
+
   // Main genres (matching lib/config.js on the server) and the sub-genres
   // listeners can add. A sub-genre is sent as a single Radio Browser tag.
   const CATALOG = [
@@ -42,7 +81,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '47';
+  const BUILD = '48';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -624,6 +663,7 @@
   function drawViz(t) {
     const dpr = Math.min(devicePixelRatio || 1, 2);
     const w = viz.clientWidth, h = viz.clientHeight;
+    if (!w || !h) { requestAnimationFrame(drawViz); return; } // hidden (vibe mode)
     if (viz.width !== w * dpr) { viz.width = w * dpr; viz.height = h * dpr; }
     vctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     vctx.clearRect(0, 0, w, h);
@@ -881,12 +921,18 @@
       // reads a "name" field, which particles don't have; touching one used to
       // throw inside the animation loop and freeze the globe.
       .particleLabel(() => '').arcLabel(() => '').hexPolygonLabel(() => '')
+      // Towers, past stations and the beam are drawn as one merged mesh (one
+      // draw call instead of one each). Saved stations need taps and hover
+      // labels, so they're dots in the labels layer instead.
       .pointLat('lat').pointLng('lng')
       .pointColor('color').pointAltitude('alt').pointRadius('r')
-      .pointsMerge(false)
-      .pointsTransitionDuration(reduced ? 0 : 600)
-      .onPointClick((p) => { if (p.station) { closeDrawer(); tuneSaved(p.station); } })
-      .pointLabel((p) => (p.station ? `<span class="city-label"><b>${esc(p.station.name)}</b>${esc(p.station.city)}</span>` : ''))
+      .pointsMerge(true)
+      .pointLabel(() => '')
+      .labelLat('lat').labelLng('lng').labelText(() => '').labelSize(0)
+      .labelIncludeDot(true).labelDotRadius(0.42).labelColor(() => '#fcee0a').labelAltitude(0.015)
+      .labelsTransitionDuration(0)
+      .onLabelClick((f) => { closeDrawer(); tuneSaved(f); })
+      .labelLabel((f) => `<span class="city-label"><b>${esc(f.name)}</b>${esc(f.city)}</span>`)
       .ringLat('lat').ringLng('lng')
       .ringColor((d) => (t) => `rgba(${d.rgb}, ${(1 - t) * d.alpha})`)
       .ringMaxRadius('max').ringPropagationSpeed('speed').ringRepeatPeriod((d) => (reduced ? 0 : d.period))
@@ -915,8 +961,15 @@
     // above the city beams and dots; 520 stops it shrinking to a speck.
     controls.minDistance = 130;
     controls.maxDistance = 520;
-    controls.addEventListener('start', () => { clearTimeout(idleTimer); controls.autoRotate = false; });
-    controls.addEventListener('end', () => scheduleDrift());
+    controls.addEventListener('start', () => { clearTimeout(idleTimer); controls.autoRotate = false; frames.drag = true; });
+    controls.addEventListener('end', () => { frames.drag = false; smoothFor(1500); scheduleDrift(); });
+    frames.fast = () => controls.autoRotate && controls.autoRotateSpeed > 1; // the scan spin while searching
+    // Camera flights run at the moving frame rate.
+    const pov = globe.pointOfView;
+    globe.pointOfView = function (geo, ms) {
+      if (geo && ms) smoothFor(ms + 300);
+      return pov.apply(this, arguments);
+    };
 
     const canvas = globe.renderer().domElement;
     canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); setTimeout(rebuildGlobe, 400); });
@@ -943,6 +996,7 @@
   function rebuildGlobe() {
     if (rebuilding || typeof Globe !== 'function') return;
     rebuilding = true;
+    frames.drag = false; // a drag cut off by the rebuild never sends its end
     const pov = globe ? globe.pointOfView() : null;
     try { if (globe && globe._destructor) globe._destructor(); } catch (_) { /* already gone */ }
     globeEl.innerHTML = '';
@@ -1011,7 +1065,19 @@
           const f = geo.features.find((x) => featureContains(x, pt));
           if (f) f.properties.color = color;
         }
-        countryFeatures = geo.features;
+        // The globe draws each feature as one mesh. One per country meant ~330
+        // draw calls a frame; one per colour draws the same dots in about 7.
+        const byColor = new Map();
+        for (const f of geo.features) {
+          const g = f.geometry;
+          const polys = !g ? [] : g.type === 'MultiPolygon' ? g.coordinates : g.type === 'Polygon' ? [g.coordinates] : [];
+          if (!polys.length) continue;
+          if (!byColor.has(f.properties.color)) byColor.set(f.properties.color, []);
+          byColor.get(f.properties.color).push(...polys);
+        }
+        countryFeatures = [...byColor].map(([color, coordinates]) => ({
+          type: 'Feature', properties: { color }, geometry: { type: 'MultiPolygon', coordinates },
+        }));
       })
       .catch(() => {})
       .then(applyGlobeData);
@@ -1112,15 +1178,12 @@
       if (favIds.has(h.uuid) && state.showFavDots) continue;
       pts.push({ lat: h.lat, lng: h.lng, color: '#ff2a6d', alt: 0.01, r: 0.32 });
     }
-    if (state.showFavDots) {
-      for (const f of state.favorites) {
-        if (state.current && f.uuid === state.current.uuid) continue;
-        pts.push({ lat: f.lat, lng: f.lng, color: '#fcee0a', alt: 0.015, r: 0.42, station: f });
-      }
-    }
+    const favs = !state.showFavDots ? [] : state.favorites.filter((f) =>
+      !(state.current && f.uuid === state.current.uuid) && Number.isFinite(f.lat) && Number.isFinite(f.lng));
     const c = state.current;
     if (c) pts.push({ lat: c.lat, lng: c.lng, color: '#fcee0a', alt: 0.2, r: 0.05 }); // the beam
     globe.pointsData(pts);
+    globe.labelsData(favs);
   }
 
   function flyTo(s) {
