@@ -16,6 +16,7 @@
 - No build step and no npm dependencies: plain HTML/CSS/JS. Vendor libraries are bundled in `public/vendor/` (no CDNs).
 - Visual style: black background, neon yellow `#fcee0a`, cyan `#00f0ff`, magenta `#ff2a6d` / pink `#ff3ec8`, green `#39ff14`; Chakra Petch display font, Share Tech Mono for HUD text; terminal-style status messages like `> LINK ESTABLISHED`. CSS tokens live at the top of `styles.css`.
 - Write commit messages in plain language describing what changed for the user.
+- **Plan, then delegate (Matt, 2026-11-14):** the main session plans (Opus, high effort) and hands code changes to the `neoearth-coder` agent (`.claude/agents/neoearth-coder.md`: Sonnet, high effort) with a written spec; it edits and tests but never commits. The main session reviews the diff and screenshots, then ships. Tiny one-line fixes can skip the hand-off.
 - **In-world text follows the lore.** Before writing or changing splash copy, status messages, vibe-mode alien lines (`UFO_LINES` in `vibes.js`), toasts or Easter eggs, read [docs/LORE.md](docs/LORE.md) (Matt's Neo-Earth lore; he writes it, Claude doesn't add canon). Keep its "Where lore shows up" list current when in-world text changes.
 
 ## The name
@@ -185,6 +186,8 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Fast moments (flights to a city, the scan spin, dragging, vibe mode) run at the screen's full rate again (120 on ProMotion); only the slow drift is capped at 60 (build 50).
 
 - Lighter in Safari: the globe no longer ray-casts the whole scene 20 times a second for hover (saved dots are checked on screen instead; they're back to small pills), the scanlines no longer use a blend mode, the now-playing panel's 1.2px backdrop blur is gone, and retina screens skip MSAA. Prompted by a friend's Activity Monitor: 46% for the page plus 39% WindowServer in Safari (build 51).
+
+- The visualizer reuses its colour gradient instead of rebuilding it every frame; first change made through the plan-then-delegate workflow (build 52).
 
 Add a line here when shipping something notable.
 

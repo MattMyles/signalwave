@@ -81,7 +81,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '51';
+  const BUILD = '52';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -660,6 +660,7 @@
   const vctx = viz.getContext('2d');
   let vizData = null;
   let silentFrames = 0; // frames in a row where the analyser returned nothing
+  let vizGrad = null, vizGradH = 0; // cached bar gradient and the height it was built for
   function drawViz(t) {
     const dpr = Math.min(devicePixelRatio || 1, 2);
     const w = viz.clientWidth, h = viz.clientHeight;
@@ -671,10 +672,14 @@
     const gap = 2;
     const bw = (w - gap * (n - 1)) / n;
     // Cyan at the base rising to pink at the peaks.
-    const vizGrad = vctx.createLinearGradient(0, h, 0, 0);
-    vizGrad.addColorStop(0, '#00f0ff');
-    vizGrad.addColorStop(0.4, '#b84dff');
-    vizGrad.addColorStop(0.75, '#ff3ec8');
+    // Cached: the gradient lives in CSS-pixel space, so only a height change rebuilds it.
+    if (!vizGrad || vizGradH !== h) {
+      vizGrad = vctx.createLinearGradient(0, h, 0, 0);
+      vizGrad.addColorStop(0, '#00f0ff');
+      vizGrad.addColorStop(0.4, '#b84dff');
+      vizGrad.addColorStop(0.75, '#ff3ec8');
+      vizGradH = h;
+    }
     const live = state.current && !state.paused && !audio.paused;
     let real = live && analyser && audio === corsAudio;
     if (real) {
