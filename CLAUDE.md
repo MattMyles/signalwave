@@ -12,6 +12,7 @@
 - **Test before pushing:** `npm test` (offline tests) and a Playwright check at iPhone width (390×844). `node server.js` serves the site and `/api/*` locally (`PORT=3123 node server.js`). The sandbox usually can't reach Radio Browser, so real stations won't load locally; the Easter egg (below) is a handy way to get audio playing for UI tests.
 - **After any change in `public/`, bump the cache name in `public/sw.js`** (`signal-wave-vNN` → next number) so installed copies update, **and bump `BUILD` near the top of `public/app.js`** (shown as "BUILD NN" at the bottom of the Saved panel; Matt uses it to check his phone has the update). If you add a new front-end file, add it to `SHELL` in `sw.js` too.
 - Phone first: everything must work at 390px wide, with safe-area insets, and on iPhone Safari (no Web Audio analyser on streams, no element full screen). Respect `prefers-reduced-motion`.
+- Keep it light (Matt's friend saw high CPU in Safari, build 51): no `mix-blend-mode` or `backdrop-filter` over the globe (the compositor redoes them every frame as it moves; WindowServer on Macs), no per-item meshes on the globe (merge them), and no globe.gl hover/click handlers (they turn its per-frame ray-casting back on).
 - No build step and no npm dependencies: plain HTML/CSS/JS. Vendor libraries are bundled in `public/vendor/` (no CDNs).
 - Visual style: black background, neon yellow `#fcee0a`, cyan `#00f0ff`, magenta `#ff2a6d` / pink `#ff3ec8`, green `#39ff14`; Chakra Petch display font, Share Tech Mono for HUD text; terminal-style status messages like `> LINK ESTABLISHED`. CSS tokens live at the top of `styles.css`.
 - Write commit messages in plain language describing what changed for the user.
@@ -60,7 +61,7 @@ Env vars (Vercel): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_K
 | HUD | Song/station display, decode animation, `status()` line, scrolling long text, Spotify/Apple Music links |
 | Visualizer | Bar visualizer (real analyser data when available, animated fake otherwise) |
 | Vibe mode | `vibeLevels()` (bass/energy/beat from analyser, or a fake groove: genre-matched BPM via `GROOVES`, beat-locked for the Easter egg), `setVibe()`, full-screen helpers |
-| Globe | globe.gl setup, auto-rebuild if iOS drops the WebGL context, arcs, rings, points, `flyTo()`, idle drift. Kept to ~50 draw calls a frame (each separate mesh costs CPU every frame): country dots are grouped into one MultiPolygon feature per colour, towers/past stations/beam are one merged mesh (`pointsMerge`), and saved stations are dots in the labels layer (`onLabelClick`, `labelLabel`) so they stay tappable |
+| Globe | globe.gl setup, auto-rebuild if iOS drops the WebGL context, arcs, rings, points, `flyTo()`, idle drift. Kept to ~50 draw calls a frame (each separate mesh costs CPU every frame): country dots are grouped into one MultiPolygon feature per colour, towers, past stations, saved stations and the beam are one merged mesh (`pointsMerge`). globe.gl's pointer tracking is off (`enablePointerInteraction(false)`): it ray-cast the whole scene 20 times a second, the biggest CPU cost while the pointer rested on the globe. Saved dots are hit-tested on screen instead (`favAt`: hover name in `.fav-tip`, tap/click tunes on pointerup, drags ignored). No MSAA on phones or retina screens |
 | Favorites | Save/remove, drawer list, globe dots |
 | Sharing stations | `/?station=<uuid>` links, paste-to-add, export/import JSON |
 | Easter egg | `EGG` station, `playEgg()`, `hack()` status lock, Terminate Remote User |
@@ -132,7 +133,7 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Sign-in email now welcomes people to the Neo//Earth Signal Engineers Corps (template only; Matt pastes it into Supabase).
 - Now-playing panel label "STATION" is now "SIGNAL" (build 24).
 - Now-playing panel background is black at 30% opacity (75% in build 25, 65% in 26, 50% in 28, 30% from build 30).
-- Blur behind the now-playing panel turned down to 20% of the original: 6px → 4.8px (build 27) → 1.2px (build 29).
+- Blur behind the now-playing panel turned down to 20% of the original: 6px → 4.8px (build 27) → 1.2px (build 29); removed in build 51 for Safari performance.
 - Globe: USA fixed to cyan and Canada to magenta so they read as separate countries; other countries keep the seeded random palette. Fixed colours live in `FIXED` (found by a point inside each country, since the map file has no names) (build 31).
 - Genres reorganized: Metal (heavy, thrash, death, black, doom…), Punk, R&B & Soul, Blues and Reggae & Ska became their own genres, and every genre got more specific styles; Metal added once to existing users' lists (build 32).
 - First-visit genre question with 5 related genres, always-visible EDIT button, editor note about the 5-at-a-time limit, splash shows just ALPHA (build 33).
@@ -182,6 +183,8 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - The drift is back to 60 fps (30 looked choppy); the 60 fps cap and the batching stay (build 49).
 
 - Fast moments (flights to a city, the scan spin, dragging, vibe mode) run at the screen's full rate again (120 on ProMotion); only the slow drift is capped at 60 (build 50).
+
+- Lighter in Safari: the globe no longer ray-casts the whole scene 20 times a second for hover (saved dots are checked on screen instead; they're back to small pills), the scanlines no longer use a blend mode, the now-playing panel's 1.2px backdrop blur is gone, and retina screens skip MSAA. Prompted by a friend's Activity Monitor: 46% for the page plus 39% WindowServer in Safari (build 51).
 
 Add a line here when shipping something notable.
 

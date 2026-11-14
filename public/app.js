@@ -81,7 +81,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '50';
+  const BUILD = '51';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -901,7 +901,9 @@
   // the browser takes the graphics context away (iPhones do this under memory
   // pressure or after the app has been in the background).
   function createGlobe() {
-    globe = new Globe(globeEl, { rendererConfig: { antialias: !narrow.matches, alpha: true, powerPreference: 'low-power' } })
+    // No extra edge smoothing (MSAA) on phones or retina screens: their pixels are small
+    // enough, and it's a lot of graphics work at full-screen size.
+    globe = new Globe(globeEl, { rendererConfig: { antialias: !narrow.matches && (devicePixelRatio || 1) < 2, alpha: true, powerPreference: 'low-power' } })
       .backgroundColor('rgba(0,0,0,0)')
       .showAtmosphere(true)
       .atmosphereColor('#b84dff')
@@ -921,18 +923,16 @@
       // reads a "name" field, which particles don't have; touching one used to
       // throw inside the animation loop and freeze the globe.
       .particleLabel(() => '').arcLabel(() => '').hexPolygonLabel(() => '')
-      // Towers, past stations and the beam are drawn as one merged mesh (one
-      // draw call instead of one each). Saved stations need taps and hover
-      // labels, so they're dots in the labels layer instead.
+      // Towers, past stations, saved stations and the beam are one merged mesh
+      // (one draw call instead of one each).
       .pointLat('lat').pointLng('lng')
       .pointColor('color').pointAltitude('alt').pointRadius('r')
       .pointsMerge(true)
       .pointLabel(() => '')
-      .labelLat('lat').labelLng('lng').labelText(() => '').labelSize(0)
-      .labelIncludeDot(true).labelDotRadius(0.42).labelColor(() => '#fcee0a').labelAltitude(0.015)
-      .labelsTransitionDuration(0)
-      .onLabelClick((f) => { closeDrawer(); tuneSaved(f); })
-      .labelLabel((f) => `<span class="city-label"><b>${esc(f.name)}</b>${esc(f.city)}</span>`)
+      // The library's own pointer tracking ray-casts the whole scene 20 times a
+      // second (~20k dots), the biggest CPU cost while the pointer rests on the
+      // globe. It's off; saved-station dots are hit-tested on screen (favAt).
+      .enablePointerInteraction(false)
       .ringLat('lat').ringLng('lng')
       .ringColor((d) => (t) => `rgba(${d.rgb}, ${(1 - t) * d.alpha})`)
       .ringMaxRadius('max').ringPropagationSpeed('speed').ringRepeatPeriod((d) => (reduced ? 0 : d.period))
@@ -940,6 +940,7 @@
       .htmlElement((d) => {
         const el = document.createElement('div');
         el.className = 'city-label';
+        el.style.willChange = 'transform'; // moved every frame: its own layer, no repaint
         el.innerHTML = `<b>${esc(d.city.toUpperCase())}</b>${Math.abs(d.lat).toFixed(2)}°${d.lat >= 0 ? 'N' : 'S'} ${Math.abs(d.lng).toFixed(2)}°${d.lng >= 0 ? 'E' : 'W'}`;
         return el;
       });
@@ -1178,12 +1179,16 @@
       if (favIds.has(h.uuid) && state.showFavDots) continue;
       pts.push({ lat: h.lat, lng: h.lng, color: '#ff2a6d', alt: 0.01, r: 0.32 });
     }
-    const favs = !state.showFavDots ? [] : state.favorites.filter((f) =>
-      !(state.current && f.uuid === state.current.uuid) && Number.isFinite(f.lat) && Number.isFinite(f.lng));
+    if (state.showFavDots) {
+      for (const f of state.favorites) {
+        if (state.current && f.uuid === state.current.uuid) continue;
+        if (!Number.isFinite(f.lat) || !Number.isFinite(f.lng)) continue;
+        pts.push({ lat: f.lat, lng: f.lng, color: '#fcee0a', alt: 0.015, r: 0.42 });
+      }
+    }
     const c = state.current;
     if (c) pts.push({ lat: c.lat, lng: c.lng, color: '#fcee0a', alt: 0.2, r: 0.05 }); // the beam
     globe.pointsData(pts);
-    globe.labelsData(favs);
   }
 
   function flyTo(s) {
@@ -1231,6 +1236,63 @@
     c.autoRotateSpeed = on ? 6 : 0.4;
     if (on) globe.pointOfView({ altitude: 2.4 }, 700);
   }
+
+  /* Saved-station dots: hover (mouse) shows the name, a tap or click tunes in.
+     Checked on screen against the few saved dots, since the globe's own pointer
+     tracking is off (see createGlobe). */
+  const favTip = document.createElement('div');
+  favTip.className = 'fav-tip';
+  favTip.hidden = true;
+  document.body.appendChild(favTip);
+  function favAt(x, y, slop) {
+    if (!globe || !state.showFavDots || !state.favorites.length) return null;
+    const box = globeEl.getBoundingClientRect();
+    const cam = globe.camera().position;
+    let best = null;
+    let bestD = slop;
+    for (const f of state.favorites) {
+      if (!Number.isFinite(f.lat) || !Number.isFinite(f.lng)) continue;
+      if (state.current && f.uuid === state.current.uuid) continue;
+      const p = globe.getCoords(f.lat, f.lng, 0.015);
+      if (p.x * (cam.x - p.x) + p.y * (cam.y - p.y) + p.z * (cam.z - p.z) <= 0) continue; // far side of the globe
+      const sc = globe.getScreenCoords(f.lat, f.lng, 0.015);
+      const d = Math.hypot(box.left + sc.x - x, box.top + sc.y - y);
+      if (d < bestD) { bestD = d; best = f; }
+    }
+    return best;
+  }
+  let tipFor = null, tipQueued = false, lastMove = null;
+  globeEl.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    lastMove = e;
+    if (tipQueued) return;
+    tipQueued = true;
+    requestAnimationFrame(() => {
+      tipQueued = false;
+      const m = lastMove;
+      const f = m.buttons ? null : favAt(m.clientX, m.clientY, 12);
+      globeEl.style.cursor = f ? 'pointer' : '';
+      favTip.hidden = !f;
+      if (!f) { tipFor = null; return; }
+      if (f !== tipFor) { favTip.innerHTML = `<span class="city-label"><b>${esc(f.name)}</b>${esc(f.city || '')}</span>`; tipFor = f; }
+      favTip.style.left = `${m.clientX}px`;
+      favTip.style.top = `${m.clientY}px`;
+    });
+  });
+  globeEl.addEventListener('pointerleave', () => { favTip.hidden = true; tipFor = null; globeEl.style.cursor = ''; });
+  let tapStart = null;
+  globeEl.addEventListener('pointerdown', (e) => {
+    tapStart = { x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse' };
+    favTip.hidden = true;
+  }, true);
+  // pointerup, not click: some touch browsers don't send a click after a tap on the canvas.
+  globeEl.addEventListener('pointerup', (e) => {
+    const t = tapStart;
+    tapStart = null;
+    if (!t || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 6) return; // a drag, not a tap
+    const f = favAt(e.clientX, e.clientY, t.touch ? 22 : 12);
+    if (f) { closeDrawer(); tuneSaved(f); }
+  }, true); // capture: the globe's controls may stop the event at the canvas
 
   /* ---------- Favorites ---------- */
   let exportSel = null; // export picker: Set of station ids being picked, otherwise null

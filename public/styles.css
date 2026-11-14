@@ -20,7 +20,7 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-.scroll { display: inline-block; white-space: nowrap; will-change: transform; }
+.scroll { display: inline-block; white-space: nowrap; }
 html, body { height: 100%; }
 body {
   margin: 0;
@@ -42,9 +42,11 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 .scanlines {
+  /* Plain see-through lines. A blend mode here (it was "overlay") made the
+     screen compositor re-blend the whole window every frame over the moving
+     globe: a big cost in Safari (WindowServer on Macs). */
   position: fixed; inset: 0; pointer-events: none; z-index: 50;
-  background: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 3px);
-  mix-blend-mode: overlay;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.07) 0 1px, transparent 1px 3px);
 }
 
 /* Top bar */
@@ -116,6 +118,9 @@ button:focus-visible, label:focus-visible, input:focus-visible {
   text-shadow: 0 0 6px #000, 0 0 10px rgba(252, 238, 10, 0.6); letter-spacing: 0.06em;
 }
 .city-label b { display: block; font-family: var(--font-display); font-size: 13px; letter-spacing: 0.14em; }
+/* Name of a saved-station dot under the mouse (app.js favAt). */
+.fav-tip { position: fixed; z-index: 20; pointer-events: none; }
+.fav-tip .city-label { display: block; }
 #recenter {
   position: absolute; z-index: 6; right: max(16px, env(safe-area-inset-right, 0px));
   top: calc(env(safe-area-inset-top, 0px) + 64px);
@@ -158,7 +163,8 @@ button:focus-visible, label:focus-visible, input:focus-visible {
   border: 1px solid var(--cyan);
   clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
   box-shadow: inset 0 0 24px rgba(0, 240, 255, 0.08);
-  backdrop-filter: blur(1.2px); -webkit-backdrop-filter: blur(1.2px);
+  /* No backdrop blur: over the moving globe it was redrawn every frame (costly in
+     Safari), and at 1.2px it was barely visible. */
 }
 .panel::before { /* neon edge along the cut corner */
   content: ''; position: absolute; top: 0; right: 0; width: calc(var(--cut) * 1.42); height: 1px;
