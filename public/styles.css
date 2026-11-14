@@ -164,6 +164,43 @@ button:focus-visible, label:focus-visible, input:focus-visible {
   content: ''; position: absolute; top: 0; right: 0; width: calc(var(--cut) * 1.42); height: 1px;
   background: var(--cyan); transform-origin: right top; transform: rotate(45deg);
 }
+/* TRACK LOG: the last 5 songs, popping out to the right of the panel. On a
+   phone it slides over the panel; on desktop it sits beside it. */
+.panel-wrap { position: relative; }
+.panel { padding-right: 34px; }
+.log-tab {
+  position: absolute; right: 1px; top: 50%; transform: translateY(-50%); z-index: 2;
+  width: 22px; height: 104px; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  background: rgba(0, 240, 255, 0.08); border: 0; border-left: 1px solid var(--line); color: var(--cyan);
+}
+.log-tab-text { writing-mode: vertical-rl; font-size: 9.5px; font-weight: 700; letter-spacing: 0.22em; }
+.log-tab-arrow { color: var(--yellow); font-size: 11px; line-height: 1; transition: transform 0.2s; }
+.log-tab:hover, .log-tab[aria-expanded='true'] { background: rgba(0, 240, 255, 0.18); }
+.log-tab[aria-expanded='true'] .log-tab-arrow { transform: scaleX(-1); }
+.track-log {
+  position: absolute; left: 0; right: 0; bottom: 0; min-height: 100%; z-index: 3; display: flex; flex-direction: column;
+  background: #02060a; border: 1px solid var(--yellow); padding: 12px 14px 8px; /* grows upward to fit all five */
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
+  box-shadow: inset 0 0 24px rgba(252, 238, 10, 0.06);
+  animation: logIn 0.22s ease-out;
+}
+.log-head { display: flex; justify-content: space-between; align-items: center; }
+.log-head .label { margin: 0; color: var(--yellow); }
+.log-close { background: none; border: 0; color: var(--dim); font-size: 15px; width: 36px; height: 32px; margin: -6px -10px -6px 0; }
+.log-close:hover { color: var(--yellow); }
+.log-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.log-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 10px; align-items: center; padding: 7px 0; border-top: 1px solid rgba(0, 240, 255, 0.14); }
+.log-row:first-child { border-top: 0; padding-top: 2px; }
+.log-song { color: var(--yellow); font-weight: 600; font-size: 14px; line-height: 1.2; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.log-artist { color: var(--text); font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.log-where { grid-column: 1; color: var(--dim); font-family: var(--font-mono); font-size: 10.5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.log-links { grid-column: 2; grid-row: 1 / span 3; display: flex; flex-direction: column; gap: 4px; }
+.log-links .songlink { justify-content: center; width: 122px; min-height: 24px; }
+.log-links .spotify { --brand: #1db954; }
+.log-links .apple { --brand: #fa243c; }
+.log-empty { color: var(--dim); font-size: 13px; margin: 14px 0 0; }
+@keyframes logIn { from { transform: translateX(26px); opacity: 0; } }
+
 .panel-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; letter-spacing: 0.16em; }
 .live { display: inline-flex; align-items: center; gap: 7px; color: var(--dim); font-weight: 600; }
 .live i { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
@@ -468,6 +505,8 @@ button:focus-visible, label:focus-visible, input:focus-visible {
   .topbar { position: fixed; top: 0; left: 0; right: 0; padding-bottom: 28px; background: linear-gradient(to bottom, rgba(0,0,0,0.85), transparent); pointer-events: none; }
   .topbar > * { pointer-events: auto; }
   .hud { position: fixed; left: 0; bottom: 0; width: 440px; padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-bottom: 24px; }
+  .track-log { left: calc(100% + 12px); right: auto; width: 370px; background: #02060a; animation-name: logOut; }
+  @keyframes logOut { from { transform: translateX(-20px); opacity: 0; } }
   .drawer {
     left: auto; right: 0; top: 0; bottom: 0; width: 380px; max-height: none;
     border-top: 0; border-left: 1px solid var(--magenta); padding-top: 72px;

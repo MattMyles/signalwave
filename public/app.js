@@ -42,7 +42,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '42';
+  const BUILD = '43';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -472,7 +472,59 @@
     return String.fromCodePoint(...[...cc].map((c) => 0x1f1a5 + c.charCodeAt(0)));
   }
 
+  /* ---------- Track log ---------- */
+  // The last 5 songs heard on this device, newest first, for the LAST 5 popout.
+  const LOG_MAX = 5;
+  state.songLog = store.get('sw.songLog', []);
+  function logSong(title) {
+    const s = state.current;
+    if (!title || !s || s.egg) return;
+    const top = state.songLog[0];
+    if (top && top.title === title) return;
+    state.songLog = [{ title, uuid: s.uuid, station: s.name, city: s.city, cc: s.countryCode, at: Date.now() },
+      ...state.songLog.filter((x) => x.title !== title)].slice(0, LOG_MAX);
+    store.set('sw.songLog', state.songLog);
+    if (!$('trackLog').hidden) renderLog();
+  }
+  function splitArtist(title) {
+    const m = /^(.+?)\s+[-–—]\s+(.+)$/.exec(title);
+    return m ? { artist: m[1], song: m[2] } : { artist: '', song: title };
+  }
+  function agoText(t) {
+    const min = Math.round((Date.now() - t) / 60000);
+    return min < 1 ? 'NOW' : min < 60 ? `${min} MIN AGO` : min < 1440 ? `${Math.round(min / 60)} H AGO` : `${Math.round(min / 1440)} D AGO`;
+  }
+  function renderLog() {
+    const list = $('logList');
+    list.innerHTML = '';
+    for (const x of state.songLog) {
+      const { artist, song } = splitArtist(x.title);
+      const q = encodeURIComponent(songQuery(x.title));
+      const li = document.createElement('li');
+      li.className = 'log-row';
+      li.innerHTML = `<div class="log-song"></div><div class="log-artist"></div><div class="log-where"></div>
+        <div class="log-links">
+          <a class="songlink spotify" target="_blank" rel="noopener" href="https://open.spotify.com/search/${q}">SPOTIFY</a>
+          <a class="songlink apple" target="_blank" rel="noopener" href="https://music.apple.com/us/search?term=${q}">APPLE MUSIC</a>
+        </div>`;
+      li.querySelector('.log-song').textContent = song;
+      li.querySelector('.log-artist').textContent = artist || x.station;
+      // Time first so it never gets cut off; then where it was heard.
+      li.querySelector('.log-where').textContent = `${agoText(x.at)} · ${flag(x.cc)} ${x.city || ''} · ${x.station}`.replace(/ · $/, '');
+      list.appendChild(li);
+    }
+    $('logEmpty').hidden = state.songLog.length > 0;
+  }
+  function setLogOpen(open) {
+    $('trackLog').hidden = !open;
+    $('logTab').setAttribute('aria-expanded', String(open));
+    if (open) renderLog();
+  }
+  $('logTab').addEventListener('click', () => setLogOpen($('trackLog').hidden));
+  $('logClose').addEventListener('click', () => setLogOpen(false));
+
   function setSong(title) {
+    logSong(title);
     const box = $('song');
     const span = $('songText');
     span.textContent = title || '// NO TRACK DATA';
@@ -1758,7 +1810,7 @@
     if (e.key === ' ' && !e.target.closest('button')) { e.preventDefault(); togglePlay(); }
     if (e.key === 'f') toggleFavorite();
     if (e.key === 'v') setVibe(!inVibe());
-    if (e.key === 'Escape') { closeGenreSheet(); closeSendSheet(); closeDrawer(); if (inVibe()) setVibe(false); }
+    if (e.key === 'Escape') { closeGenreSheet(); closeSendSheet(); closeDrawer(); setLogOpen(false); if (inVibe()) setVibe(false); }
   });
 
   /* ---------- Account & sync ----------

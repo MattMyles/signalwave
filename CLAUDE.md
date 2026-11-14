@@ -70,7 +70,7 @@ Env vars (Vercel): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_K
 | Account & sync | Email one-time code sign-in (code, not link, so it works in the home-screen app); one Supabase row per user (favorites, genres, hidden), debounced push |
 | Boot | Splash screen, "Jack in" |
 
-Browser storage keys (keep stable): `sw.favorites`, `sw.genres`, `sw.selected`, `sw.genre`, `sw.hidden`, `sw.showFavDots`, `sw.visitor`, `sw.auth`, `sw.syncUser`, `sw.syncedAt`, `sw.changedAt`, `sw.genresVersion` (one-time genre-list upgrades, e.g. adding Metal in build 32), `sw.saveTipDismissed` (the saved-list tip's ✕), `sw.heard` (station IDs ever played here, newest 6000; random play excludes them; if a genre has nothing new, `fetchFresh` allows a repeat and says so).
+Browser storage keys (keep stable): `sw.favorites`, `sw.genres`, `sw.selected`, `sw.genre`, `sw.hidden`, `sw.showFavDots`, `sw.visitor`, `sw.auth`, `sw.syncUser`, `sw.syncedAt`, `sw.changedAt`, `sw.genresVersion` (one-time genre-list upgrades, e.g. adding Metal in build 32), `sw.saveTipDismissed` (the saved-list tip's ✕), `sw.songLog` (the track log's last 5 songs), `sw.heard` (station IDs ever played here, newest 6000; random play excludes them; if a genre has nothing new, `fetchFresh` allows a repeat and says so).
 
 Supabase tables (`supabase/migrations/`): `user_settings` (per-user, row-level security), `plays` + admin stats function, `station_checks`, `genre_reports` (WRONG GENRE? reports with review status; migration `20261113070000_genre_reports.sql`), `nese_members` + `nese_signals` with functions `nese_member`, `nese_send`, `nese_inbox`, `nese_dismiss` (server-only; sends are capped at 30/hour, inboxes at 50). Sign-in email template: `supabase/templates/magic_link.html` (pasted into Supabase by hand).
 
@@ -78,6 +78,7 @@ Supabase tables (`supabase/migrations/`): `user_settings` (per-user, row-level s
 
 - Random vetted music station worldwide, globe flies to its city with an arc from the last one; NEXT/PREV, two stations always queued.
 - Now playing with song titles, station/genre/city/country, bitrate, visualizer, Spotify and Apple Music search links, lock-screen controls.
+- **Track log** (LAST 5 tab on the panel's right edge, Esc closes): the last 5 songs heard on this device, newest first (`sw.songLog`, logged in `setSong` via `logSong`; the Easter egg isn't logged), each with song, artist, time ago, flag/city/station and SPOTIFY / APPLE MUSIC buttons that open a search in each app. On a phone it slides over the panel and grows upward to fit all five; on desktop it pops out beside the panel. One-tap adding: Apple Music is possible later with MusicKit (Matt's developer account); Spotify isn't, since its API now limits unapproved apps to 5 allow-listed users (approval needs 250k monthly users and a registered business).
 - **First visit:** after JACK IN, new listeners (no saved genre list) get "WHAT DO YOU WANT TO HEAR FIRST?": pick a genre, then a style or ALL <genre>, or SURPRISE ME (defaults, Any). Their list starts as the pick + related genres, 5 in all (`RELATED` in `app.js`), with the pick selected. Shared links skip it.
 - A small fixed EDIT button sits at the end of the genre row (always visible; the chips scroll). The editor explains: add as many genres as you like, pick up to 5 at a time to rotate through. Opening a genre in the editor loads station counts next to each style (`loadGenreCounts`, an upper bound; empty styles are dimmed). Adding a genre while nothing is selected (Any) selects it.
 - Genre chips, mix up to 5; editable list with sub-genres; dead genres flagged. 15 main genres: Electronic, Rock, Metal, Punk, Pop, Hip-hop, R&B & Soul, Jazz, Blues, Classical, Ambient & Chill, Latin, Reggae & Ska, World, Country & Folk, each with roughly 4–17 styles (`CATALOG` in `app.js`; main-genre ids and search tags must match `GENRES` in `lib/config.js`). Tags match by substring, so avoid short tags that hide inside other words (e.g. "oi", or "dub" as a main tag).
@@ -164,6 +165,8 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - "Not music? Hide station" is back as FORGET SIGNAL (same behaviour, wording that doesn't suggest ads count as "not music") (build 42).
 
 - Email alert when more than 3 wrong-genre reports are waiting for review (Resend; needs `RESEND_API_KEY` in Vercel) (server only).
+
+- Track log: a LAST 5 tab on the now-playing panel opens the last 5 songs you heard, with Spotify and Apple Music buttons (build 43).
 
 Add a line here when shipping something notable.
 

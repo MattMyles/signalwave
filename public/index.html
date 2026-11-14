@@ -57,6 +57,7 @@
   </div>
 
   <main class="hud">
+    <div class="panel-wrap">
     <section class="panel" id="panel" aria-live="polite">
       <div class="panel-head">
         <span class="live" id="live"><i></i><span id="liveText">STANDBY</span></span>
@@ -86,6 +87,18 @@
       </div>
       <button class="terminate" id="terminate" hidden>TERMINATE REMOTE USER</button>
     </section>
+    <button class="log-tab" id="logTab" aria-expanded="false" aria-controls="trackLog" title="The last 5 songs you heard">
+      <span class="log-tab-text">LAST 5</span><span class="log-tab-arrow" aria-hidden="true">▸</span>
+    </button>
+    <aside class="track-log" id="trackLog" aria-label="Last 5 songs" hidden>
+      <div class="log-head">
+        <span class="label">TRACK LOG // LAST 5</span>
+        <button class="log-close" id="logClose" aria-label="Close track log">✕</button>
+      </div>
+      <ol class="log-list" id="logList"></ol>
+      <p class="log-empty" id="logEmpty">Songs you hear show up here, so you can find them again.</p>
+    </aside>
+    </div>
 
     <div class="genre-row">
       <nav class="genres" id="genres" aria-label="Genre"></nav>
