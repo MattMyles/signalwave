@@ -53,7 +53,7 @@ Env vars (Vercel): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_K
 | Section | What's there |
 |---|---|
 | (top) | `state`, `store` (localStorage wrapper), `CATALOG` of genres/sub-genres, timing constants |
-| Frame cap | Wraps `requestAnimationFrame`/`cancelAnimationFrame` so every animation (globe.gl, visualizer, vibes.js) draws at most 60 fps, never 120 on ProMotion screens. `IDLE_FPS` (drifting) and `MOVING_FPS` (a drag `frames.drag`, a camera flight via `smoothFor`, the scan spin `frames.fast`, vibe mode) are both 60: Matt found a 30 fps drift too choppy (build 48), so don't lower it |
+| Frame cap | Wraps `requestAnimationFrame`/`cancelAnimationFrame` so every animation (globe.gl, visualizer, vibes.js) draws at `IDLE_FPS` 60 while the globe just drifts (never 120 on ProMotion screens), and at the screen's full rate during anything fast: a drag (`frames.drag`), a camera flight (`globe.pointOfView` with a duration calls `smoothFor`), the scan spin (`frames.fast`), vibe mode. Matt found a 30 fps drift choppy (build 48) and fast moves capped at 60 choppy on his 120 Hz screen (build 49), so don't lower either |
 | Audio | Two `<audio>` elements: plain, and CORS-enabled feeding a Web Audio analyser (not used on iOS). `playUrl`, stall timer (8 s), one reconnect per minute, `troubled()` |
 | Station fetching | Queue of two vetted stations, `next()`, `tune()`, `prev()` |
 | Listening stats | `recordPlay` after 30 s |
@@ -180,6 +180,8 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 - Lighter on the CPU: the globe draws in ~50 batches a frame instead of ~430 (countries grouped by colour, towers merged), and animations were capped at 30 fps while the globe drifts and 60 while it moves, instead of every screen refresh (120 on ProMotion Macs). Saved-station dots are now flat discs; tap and hover work as before (build 48).
 
 - The drift is back to 60 fps (30 looked choppy); the 60 fps cap and the batching stay (build 49).
+
+- Fast moments (flights to a city, the scan spin, dragging, vibe mode) run at the screen's full rate again (120 on ProMotion); only the slow drift is capped at 60 (build 50).
 
 Add a line here when shipping something notable.
 

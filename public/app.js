@@ -18,14 +18,14 @@
   /* ---------- Frame cap ----------
      Every animation here (globe.gl's loops, the visualizer, vibe mode) runs on
      requestAnimationFrame, which fires once per display refresh: 120 times a
-     second on ProMotion screens. Nothing needs that, so frames are capped where
-     they're requested at 60 fps. Everything still draws in the same frames and
-     keeps its speed (motion is timed, not counted in frames). IDLE_FPS applies
-     while the globe just drifts; 30 was tried and Matt found the drift too
-     choppy (build 48), so it matches the moving rate. */
-  const IDLE_FPS = 60, MOVING_FPS = 60;
+     second on ProMotion screens. While the globe just drifts, that's capped at
+     IDLE_FPS (60; 30 looked choppy). Anything fast runs uncapped at the screen's
+     full rate: a drag, a flight to a city, the scan spin, vibe mode (capping
+     those at 60 made them choppy on 120 Hz screens, build 49). Everything draws
+     in the same frames and keeps its speed (motion is timed, not counted). */
+  const IDLE_FPS = 60;
   const frames = { last: -1, until: 0, drag: false, fast: () => false };
-  // Keep frames at the moving rate for the next `ms`.
+  // Run at the screen's full rate for the next `ms`.
   const smoothFor = (ms) => { frames.until = Math.max(frames.until, performance.now() + ms); };
   {
     const raf = window.requestAnimationFrame.bind(window);
@@ -35,7 +35,7 @@
     const allowed = (t) => {
       if (t === frames.last) return true; // other callbacks in a frame that's drawing
       const moving = frames.drag || performance.now() < frames.until || frames.fast() || document.body.classList.contains('vibe');
-      if (t - frames.last < 1000 / (moving ? MOVING_FPS : IDLE_FPS) - 4) return false;
+      if (!moving && t - frames.last < 1000 / IDLE_FPS - 4) return false;
       frames.last = t;
       return true;
     };
@@ -81,7 +81,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '49';
+  const BUILD = '50';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
