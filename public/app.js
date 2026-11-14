@@ -19,11 +19,11 @@
      Every animation here (globe.gl's loops, the visualizer, vibe mode) runs on
      requestAnimationFrame, which fires once per display refresh: 120 times a
      second on ProMotion screens. Nothing needs that, so frames are capped where
-     they're requested: 60 fps while something moves (a drag, a flight to a city,
-     the scan spin, vibe mode), 30 fps while the globe just drifts. Everything
-     still draws in the same frames and keeps its speed (motion is timed, not
-     counted in frames). Raise IDLE_FPS to 60 if the drift ever looks choppy. */
-  const IDLE_FPS = 30, MOVING_FPS = 60;
+     they're requested at 60 fps. Everything still draws in the same frames and
+     keeps its speed (motion is timed, not counted in frames). IDLE_FPS applies
+     while the globe just drifts; 30 was tried and Matt found the drift too
+     choppy (build 48), so it matches the moving rate. */
+  const IDLE_FPS = 60, MOVING_FPS = 60;
   const frames = { last: -1, until: 0, drag: false, fast: () => false };
   // Keep frames at the moving rate for the next `ms`.
   const smoothFor = (ms) => { frames.until = Math.max(frames.until, performance.now() + ms); };
@@ -81,7 +81,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '48';
+  const BUILD = '49';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
