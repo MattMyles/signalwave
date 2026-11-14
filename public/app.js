@@ -42,7 +42,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '46';
+  const BUILD = '47';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -2085,6 +2085,17 @@
     return { ok: r.ok, ...j };
   }
 
+  // Transmissions the listener has added or dismissed, kept until the server
+  // confirms they're gone: they stay off screen even if a refresh that started
+  // earlier comes back with them, and the delete is retried if it didn't go through.
+  const neseGone = new Set(store.get('sw.neseGone', []).map(Number));
+  const saveGone = () => store.set('sw.neseGone', [...neseGone].slice(-200));
+  function dismissSignals(ids) {
+    ids.forEach((id) => neseGone.add(id));
+    saveGone();
+    for (const id of ids) neseCall('POST', { action: 'dismiss', id }).catch(() => {});
+  }
+
   let neseLoading = null;
   function loadNese() {
     if (!user) { nese = null; renderNese(); return Promise.resolve(); }
@@ -2093,9 +2104,17 @@
     neseLoading = neseCall('GET').then((j) => {
       if (!user) return;
       if (j && j.ok && j.id) {
-        nese = { id: j.id, number: j.number, inbox: Array.isArray(j.inbox) ? j.inbox : [] };
+        const server = Array.isArray(j.inbox) ? j.inbox : [];
+        const onServer = new Set(server.map((x) => Number(x.id)));
+        // Gone from the server: done. Still there: hide it and delete it again.
+        for (const id of [...neseGone]) {
+          if (!onServer.has(id)) neseGone.delete(id);
+          else neseCall('POST', { action: 'dismiss', id }).catch(() => {});
+        }
+        saveGone();
+        nese = { id: j.id, number: j.number, inbox: server.filter((x) => !neseGone.has(Number(x.id))) };
         if (before >= 0 && nese.inbox.length > before && $('drawer').hidden) {
-          const n = nese.inbox.length;
+          const n = new Set(nese.inbox.map((x) => x.uuid)).size;
           toast(`> ${n} INCOMING TRANSMISSION${n === 1 ? '' : 'S'}`, { label: 'OPEN', fn: () => { openDrawer(); setDashTab('transmit'); } });
         }
       } else {
@@ -2114,6 +2133,15 @@
     $('neseBadge').hidden = !member;
     if (member) $('neseId').textContent = nese.id;
     const inbox = member ? nese.inbox : [];
+    // The same signal sent more than once (or by several members) shows as one row.
+    const rows = [];
+    const byUuid = new Map();
+    for (const s of inbox) {
+      const row = byUuid.get(s.uuid);
+      if (row) { if (!row.from.includes(s.from)) row.from.push(s.from); continue; }
+      const r = { ...s, from: [s.from] };
+      byUuid.set(s.uuid, r); rows.push(r);
+    }
     $('neseTabs').hidden = !member;
     if (!member) setDashTab('signals');
     $('inboxEmpty').hidden = inbox.length > 0;
@@ -2121,17 +2149,17 @@
     $('tabDot').hidden = !inbox.length;
     const list = $('inboxList');
     list.innerHTML = '';
-    for (const s of inbox) {
+    for (const s of rows) {
       const li = document.createElement('li');
       li.className = 'signal';
       li.innerHTML = `
         <span class="info">
-          <span class="from">FROM ${esc(s.from)}</span>
+          <span class="from">FROM ${esc(s.from.join(' · '))}</span>
           <span class="name"><span class="scroll">${esc(s.name || 'Unknown signal')}</span></span>
           ${s.place ? `<span class="where"><span class="scroll">${esc(s.place)}</span></span>` : ''}
         </span>
-        <button class="take" data-take="${esc(s.id)}" aria-label="Add ${esc(s.name || 'this station')} to saved">ADD</button>
-        <button class="del" data-drop="${esc(s.id)}" aria-label="Dismiss">✕</button>`;
+        <button class="take" data-take="${esc(s.uuid)}" aria-label="Add ${esc(s.name || 'this station')} to saved">ADD</button>
+        <button class="del" data-drop="${esc(s.uuid)}" aria-label="Dismiss">✕</button>`;
       list.appendChild(li);
     }
     if (!$('drawer').hidden) refitAll();
@@ -2140,22 +2168,22 @@
   $('inboxList').addEventListener('click', async (e) => {
     const take = e.target.closest('[data-take]');
     const drop = e.target.closest('[data-drop]');
-    const id = Number((take || drop || {}).dataset ? (take || drop).dataset.take || (take || drop).dataset.drop : NaN);
-    if (!nese || !Number.isFinite(id)) return;
-    const s = nese.inbox.find((x) => Number(x.id) === id);
-    if (!s) return;
+    const uuid = take ? take.dataset.take : drop ? drop.dataset.drop : null;
+    if (!nese || !uuid) return;
     if (take) {
       take.disabled = true;
-      const f = await addSharedStation(s.uuid);
+      const f = await addSharedStation(uuid);
       if (!f) { take.disabled = false; return; } // it said why; keep it in the inbox
     }
-    nese.inbox = nese.inbox.filter((x) => Number(x.id) !== id);
+    // Every copy of this signal goes, here and on the server.
+    const ids = nese.inbox.filter((x) => x.uuid === uuid).map((x) => Number(x.id));
+    nese.inbox = nese.inbox.filter((x) => x.uuid !== uuid);
     renderNese();
-    neseCall('POST', { action: 'dismiss', id }).catch(() => {});
+    dismissSignals(ids);
   });
 
   // Dashboard tabs (members only): SIGNALS = the saved list and the rest of the
-  // panel; TRANSMIT = send a signal to a member's ID, plus incoming transmissions.
+  // panel; TRANSMISSIONS = send a signal to a member's ID, plus incoming transmissions.
   function setDashTab(tab) {
     const tx = tab === 'transmit';
     $('drawer').classList.toggle('tab-tx', tx);

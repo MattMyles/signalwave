@@ -388,7 +388,7 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 .nese-org { font-size: 9px; letter-spacing: 0.22em; color: var(--dim); font-weight: 600; }
 .nese-id { font-size: 22px; color: var(--yellow); letter-spacing: 0.12em; text-shadow: 0 0 10px rgba(252, 238, 10, 0.5); }
 .incoming { display: flex; flex-direction: column; gap: 8px; }
-/* NESE dashboard tabs: SIGNALS (saved list etc.) and TRANSMIT (send + incoming). */
+/* NESE dashboard tabs: SIGNALS (saved list etc.) and TRANSMISSIONS (send + incoming). */
 .nese-tabs { display: flex; border-bottom: 1px solid var(--line); }
 .nese-tabs button {
   flex: 1; min-height: 44px; background: none; border: 0; border-bottom: 2px solid transparent;
