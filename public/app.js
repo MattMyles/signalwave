@@ -42,7 +42,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '45';
+  const BUILD = '46';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -784,18 +784,19 @@
     return document.body.classList.contains('vibe') && window.innerWidth < 600 ? 4.6 : 2.6;
   }
   // The globe's centre and on-screen radius, so vibe mode's basketballs can
-  // orbit it. During the Easter egg's dribble it's the middle of the bounce,
-  // so the balls circle steadily while the globe bounces inside their orbits.
+  // orbit it. It follows the Easter egg's dribble (the transformed layer), so
+  // the balls ride along with the bouncing Earth.
   function globeOnScreen() {
     if (!globe || !globe.camera || !globe.getGlobeRadius) return null;
-    const box = globeEl.getBoundingClientRect(); // the un-bounced frame
+    const frame = globeEl.getBoundingClientRect();
+    const box = (globeEl.firstElementChild || globeEl).getBoundingClientRect(); // includes the bounce
     const cam = globe.camera();
     const R = globe.getGlobeRadius();
     const d = cam.position.length();
-    if (!(d > R) || !box.height) return null;
+    if (!(d > R) || !frame.height) return null;
     const half = Math.tan((cam.fov * Math.PI) / 360);
-    const lift = globeEl.classList.contains('bouncing') ? box.height * 0.07 : 0; // the dribble rises up to 14%
-    return { x: box.left + box.width / 2, y: box.top + box.height / 2 - lift, r: ((box.height / 2) * Math.tan(Math.asin(R / d))) / half };
+    const r = ((frame.height / 2) * Math.tan(Math.asin(R / d))) / half;
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2, r: r * (box.height / frame.height) };
   }
   // Easter egg announcer: a shot that hits one of vibe mode's basketballs plays
   // one of these calls (public/media/jam). They play through a small Web Audio

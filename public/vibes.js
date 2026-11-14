@@ -170,9 +170,9 @@
     return {
       tilt: tall ? (Math.random() < 0.5 ? -1 : 1) * rand(1.0, 1.35) : rand(-1.3, 1.3),
       node: tall ? Math.PI / 2 + rand(-0.35, 0.35) : rand(0, TAU),
-      a: tall ? rand(1.12, 1.45) : rand(1.22, 1.7), th: rand(0, TAU) + i * 1.3,
-      speed: rand(0.5, 0.95) * (Math.random() < 0.5 ? -1 : 1), spin: rand(0, TAU),
-      x: -999, y: -999, vx: 0, vy: 0, r: 10, depth: 0, front: false, gone: 0,
+      a: tall ? rand(1.08, 1.32) : rand(1.12, 1.4), th: rand(0, TAU) + i * 1.3,
+      speed: rand(0.4, 0.76) * (Math.random() < 0.5 ? -1 : 1), spin: rand(0, TAU),
+      x: -999, y: -999, vx: 0, vy: 0, r: 10, depth: 0, front: false, gone: 0, trail: [],
     };
   }
   // Moves a ball along its tilted orbit and works out whether the globe hides it.
@@ -183,35 +183,97 @@
     const R = Math.min(g.r * b.a, Math.max(w, h) * 0.46);
     const ox = Math.cos(b.th) * R, oy = Math.sin(b.th) * R * Math.cos(b.tilt);
     const z = Math.sin(b.th) * R * Math.sin(b.tilt); // towards the viewer when positive
-    const x = g.x + ox * Math.cos(b.node) - oy * Math.sin(b.node);
-    const y = g.y + ox * Math.sin(b.node) + oy * Math.cos(b.node);
-    if (dt > 0 && b.x > -900) { b.vx = (x - b.x) / dt; b.vy = (y - b.y) / dt; }
+    const rx = ox * Math.cos(b.node) - oy * Math.sin(b.node);
+    const ry = ox * Math.sin(b.node) + oy * Math.cos(b.node);
+    const x = g.x + rx, y = g.y + ry;
+    // Velocity along the orbit (the globe's bounce left out), for aiming.
+    if (dt > 0 && b.rx !== undefined) { b.vx = (rx - b.rx) / dt; b.vy = (ry - b.ry) / dt; }
+    b.rx = rx; b.ry = ry; b.R = R;
     b.x = x; b.y = y;
     b.depth = z / R;
     b.r = Math.max(9, g.r * 0.085) * (1 + b.depth * 0.2);
     b.front = !(z < 0 && Math.hypot(x - g.x, y - g.y) < g.r + b.r * 0.4);
+    if (b.front) { b.trail.push({ x: rx, y: ry }); if (b.trail.length > 14) b.trail.shift(); } else b.trail = [];
   }
-  function drawBall(b) {
+  // A neon wireframe basketball: glowing outline, seams and a turning
+  // equator ring, with a faint see-through body, like the asteroids.
+  function drawBall(b, g) {
     const r = b.r;
+    ctx.globalCompositeOperation = 'lighter';
+    // Comet tail: one neon line along the orbit behind the ball, narrowing
+    // to a point and fading out. Traced from the orbit itself, so it's a
+    // smooth curve at any frame rate; it ends where the orbit goes behind the globe.
+    const N = 18, L = 0.65, dir = b.speed > 0 ? -1 : 1;
+    const pts = [];
+    for (let k = 0; k <= N; k++) {
+      const th = b.th + dir * L * (k / N);
+      const ox = Math.cos(th) * b.R, oy = Math.sin(th) * b.R * Math.cos(b.tilt), z = Math.sin(th) * b.R * Math.sin(b.tilt);
+      const x = g.x + ox * Math.cos(b.node) - oy * Math.sin(b.node), y = g.y + ox * Math.sin(b.node) + oy * Math.cos(b.node);
+      if (z < 0 && Math.hypot(x - g.x, y - g.y) < g.r) break;
+      pts.push({ x, y, wid: r * 0.5 * (1 - k / N) });
+    }
+    // Start at the ball's edge so the wireframe stays see-through.
+    while (pts.length && Math.hypot(pts[0].x - b.x, pts[0].y - b.y) < r * 0.95) pts.shift();
+    if (pts.length > 2) {
+      const left = [], right = [];
+      pts.forEach((p, k) => {
+        const a2 = pts[Math.min(k + 1, pts.length - 1)], b2 = pts[Math.max(k - 1, 0)];
+        const tx = a2.x - b2.x, ty = a2.y - b2.y, tl = Math.hypot(tx, ty) || 1;
+        const nx = -ty / tl, ny = tx / tl;
+        left.push([p.x + nx * p.wid, p.y + ny * p.wid]);
+        right.push([p.x - nx * p.wid, p.y - ny * p.wid]);
+      });
+      const end = pts[pts.length - 1];
+      const grad = ctx.createLinearGradient(b.x, b.y, end.x, end.y);
+      grad.addColorStop(0, 'rgba(255, 122, 26, 0.85)');
+      grad.addColorStop(0.45, 'rgba(255, 42, 109, 0.45)');
+      grad.addColorStop(1, 'rgba(184, 77, 255, 0)');
+      ctx.globalAlpha = 1; ctx.fillStyle = grad;
+      ctx.beginPath();
+      left.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      for (let k = right.length - 1; k >= 0; k--) ctx.lineTo(right[k][0], right[k][1]);
+      ctx.closePath(); ctx.fill();
+    }
     ctx.save();
-    ctx.globalCompositeOperation = 'source-over';
     ctx.translate(b.x, b.y);
-    ctx.globalAlpha = 1;
-    const grd = ctx.createRadialGradient(-r * 0.35, -r * 0.35, r * 0.1, 0, 0, r);
-    grd.addColorStop(0, '#ffb45e'); grd.addColorStop(0.65, '#f0640c'); grd.addColorStop(1, '#a8400a');
-    ctx.fillStyle = grd;
+    ctx.globalAlpha = 0.12; ctx.fillStyle = ORANGE;
     ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
-    // Seams, turning as the ball spins.
+    // Outline: a wide soft glow under a crisp line.
+    ctx.strokeStyle = ORANGE;
+    ctx.globalAlpha = 0.25; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke();
+    // Seams and a turning equator, clipped to the ball.
     ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.clip();
-    ctx.rotate(b.spin);
-    ctx.strokeStyle = '#2a1204'; ctx.lineWidth = Math.max(1, r * 0.09);
+    ctx.rotate(b.spin * 0.35);
+    ctx.strokeStyle = '#fcee0a'; ctx.globalAlpha = 0.9; ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.moveTo(-r, 0); ctx.lineTo(r, 0);
     ctx.moveTo(0, -r); ctx.lineTo(0, r);
     ctx.moveTo(-r * 0.32, -r); ctx.quadraticCurveTo(-r * 0.95, 0, -r * 0.32, r);
     ctx.moveTo(r * 0.32, -r); ctx.quadraticCurveTo(r * 0.95, 0, r * 0.32, r);
     ctx.stroke();
+    ctx.strokeStyle = '#ff3ec8'; ctx.globalAlpha = 0.85;
+    ctx.beginPath(); ctx.ellipse(0, 0, r, r * Math.abs(Math.sin(b.spin)) * 0.45 + 0.6, 0, 0, TAU); ctx.stroke();
     ctx.restore();
+  }
+  // The orbit itself: a faint dashed neon line, hidden where it passes behind the globe.
+  function drawOrbit(b, g) {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = ORANGE; ctx.lineWidth = 1; ctx.globalAlpha = 0.16;
+    ctx.setLineDash([3, 7]);
+    ctx.beginPath();
+    let pen = false;
+    for (let k = 0; k <= 72; k++) {
+      const th = (k / 72) * TAU;
+      const ox = Math.cos(th) * b.R, oy = Math.sin(th) * b.R * Math.cos(b.tilt), z = Math.sin(th) * b.R * Math.sin(b.tilt);
+      const x = g.x + ox * Math.cos(b.node) - oy * Math.sin(b.node), y = g.y + ox * Math.sin(b.node) + oy * Math.cos(b.node);
+      const hidden = z < 0 && Math.hypot(x - g.x, y - g.y) < g.r;
+      if (hidden) { pen = false; continue; }
+      if (pen) ctx.lineTo(x, y); else { ctx.moveTo(x, y); pen = true; }
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
   function emitFlames(b, dt) {
     if (embers.length > 320) return;
@@ -222,7 +284,7 @@
       embers.push({
         x: b.x - dx * b.r * 0.5 + rand(-b.r, b.r) * 0.35, y: b.y - dy * b.r * 0.5 + rand(-b.r, b.r) * 0.35,
         vx: -dx * rand(20, 70) + rand(-15, 15), vy: -dy * rand(20, 70) + rand(-40, -10),
-        life: rand(0.25, 0.55), max: 0.55, s: rand(0.45, 0.8) * b.r,
+        life: rand(0.25, 0.6), max: 0.6, s: rand(1.2, 2.8),
       });
     }
   }
@@ -249,26 +311,25 @@
   function drawEgg(now, dt) {
     const g = globeInfo();
     if (g && egg) {
+      balls.forEach((b) => { if (b.gone <= 0 && b.R) drawOrbit(b, g); });
       for (let i = 0; i < balls.length; i++) {
         const b = balls[i];
         if (b.gone > 0) { b.gone -= dt; if (b.gone <= 0) balls[i] = newBall(i); continue; }
         placeBall(b, g, dt);
-        if (b.front) emitFlames(b, dt);
       }
     }
-    // Flames (drawn first, so the balls sit on top of their fire).
+    // Fire: neon pixel sparks shed from each ball's comet tail (yellow, then orange, then magenta).
     for (let i = embers.length - 1; i >= 0; i--) {
       const e = embers[i];
       e.life -= dt;
       if (e.life <= 0) { embers.splice(i, 1); continue; }
       e.x += e.vx * dt; e.y += e.vy * dt;
       const k = e.life / e.max;
-      ctx.globalAlpha = Math.min(1, k * 1.6) * 0.85;
-      ctx.fillStyle = k > 0.65 ? '#fff1a0' : k > 0.35 ? '#ffaa00' : '#ff3d00';
-      ctx.beginPath(); ctx.arc(e.x, e.y, Math.max(0.5, e.s * k), 0, TAU); ctx.fill();
+      ctx.globalAlpha = Math.min(1, k * 1.8);
+      ctx.fillStyle = k > 0.6 ? '#fcee0a' : k > 0.3 ? ORANGE : '#ff2a6d';
+      ctx.fillRect(e.x - e.s / 2, e.y - e.s / 2, e.s, e.s);
     }
-    if (egg) balls.forEach((b) => { if (b.front && b.gone <= 0) drawBall(b); });
-    ctx.globalCompositeOperation = 'lighter';
+    if (egg && g) balls.forEach((b) => { if (b.front && b.gone <= 0) drawBall(b, g); });
     // Second bursts.
     for (let i = later.length - 1; i >= 0; i--) {
       const l = later[i];
@@ -313,11 +374,11 @@
       if (m.life <= 0 || m.y > h + 20) { minis.splice(i, 1); continue; }
       m.vy += 380 * dt; m.x += m.vx * dt; m.y += m.vy * dt; m.rot += m.spin * dt;
       ctx.save();
-      ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = Math.min(1, m.life / 0.6);
       ctx.translate(m.x, m.y); ctx.rotate(m.rot);
-      ctx.fillStyle = '#f0640c'; ctx.beginPath(); ctx.arc(0, 0, m.r, 0, TAU); ctx.fill();
-      ctx.strokeStyle = '#2a1204'; ctx.lineWidth = 1;
+      ctx.strokeStyle = ORANGE; ctx.lineWidth = 1.3;
+      ctx.beginPath(); ctx.arc(0, 0, m.r, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = '#fcee0a'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(-m.r, 0); ctx.lineTo(m.r, 0); ctx.moveTo(0, -m.r); ctx.lineTo(0, m.r); ctx.stroke();
       ctx.restore();
     }
