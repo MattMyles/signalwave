@@ -123,4 +123,6 @@ What the app says today, so it's clear what the lore would change. File names ar
 
 **Sign-in email** (`supabase/templates/magic_link.html`): subject "Welcome to the Neo//Earth Signal Engineers Corps // code ######"; "> TRANSMISSION RECEIVED" · "Welcome to the Neo//Earth Signal Engineers Corps." · YOUR SIGN-IN CODE · footer "> LINK STANDING BY".
 
+**Apple TV app** (`~/Dev/NeoEarth/tvos`, outside this repo): reuses the splash, boot-log, status-line and toast wording above (JACK IN, > LAST SIGNAL: … // JACK IN TO RESUME, > RETUNING TO PREVIOUS SIGNAL…, NESE ID badge under NEO//EARTH SIGNAL ENGINEERS CORPS). Keep it in step when this wording changes.
+
 **Easter egg** (Wrecking Crew, `wreckingcrew.mp3`): > UNKNOWN SIGNAL DETECTED… · > LINK HACKED // STREAM CORRUPTED // JAM IMMINENT · TERMINATE REMOTE USER · > REMOTE USER TERMINATED — RESTORING SIGNAL… · > TRANSMISSION COMPLETE — RETUNING…; in vibe mode, shot basketballs shout FROM DOWNTOWN! · IT'S GOOD! · HE'S ON FIRE! · IS IT THE SHOES?! · BOOMSHAKALAKA! (with NBA Jam announcer sounds), and FINAL BUZZER! when the track ends

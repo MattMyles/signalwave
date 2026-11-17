@@ -192,6 +192,8 @@ The app was planned and first built in a separate claude.ai chat, "Cyberpunk wor
 
 - JACK IN resumes the last station you were listening to, synced across devices when signed in (build 53). Needs migration `20261117040000_last_station.sql` for the cross-device part.
 
+- Apple TV app (native SwiftUI + SceneKit, since tvOS has no web view) added beside the iPhone app in Matt's `~/Dev/NeoEarth/tvos`, sharing `ios/NeoEarth/Shared` (player, API, library, Sign in with Apple). It reuses this site's `/api/*`, the Supabase `user_settings` row (favorites, genres, hidden, `last_station`) and the web's status-line wording, so changes to those APIs or wording should be mirrored there. Not yet compiled at the time of writing. The Apple apps' site address was corrected to signalwave-pi.vercel.app.
+
 Add a line here when shipping something notable.
 
 ## Known limits and ideas not done
