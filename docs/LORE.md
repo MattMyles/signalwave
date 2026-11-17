@@ -101,7 +101,7 @@ Music was thought to be an important factor to aid in the healing process of Neo
 
 What the app says today, so it's clear what the lore would change. File names are for Claude.
 
-**Splash page** (`public/index.html`): logo NEO // EARTH ^RADIO with an ALPHA tag (development marker, not lore); tagline "Live music radio from a random city on Neo-Earth. Neo-Earth music only."; boot log "> LOADING WORLD GRID…" then "> WORLD GRID ONLINE // READY"; button "JACK IN"; first visit asks "WHAT DO YOU WANT TO HEAR FIRST?" (SURPRISE ME // ANY MUSIC, ALL <GENRE>).
+**Splash page** (`public/index.html`): logo NEO // EARTH ^RADIO with an ALPHA tag (development marker, not lore); tagline "Live music radio from a random city on Neo-Earth. Neo-Earth music only."; boot log "> LOADING WORLD GRID…" then "> WORLD GRID ONLINE // READY" (or "> LAST SIGNAL: <STATION NAME> // JACK IN TO RESUME" when there is a last station to resume); button "JACK IN"; first visit asks "WHAT DO YOU WANT TO HEAR FIRST?" (SURPRISE ME // ANY MUSIC, ALL <GENRE>).
 
 **Link previews** (`public/index.html` meta tags, `public/og-image.png`): "Live music radio from a random city on Neo-Earth. Neo//Earth music only." / image tagline "> NEO//EARTH MUSIC ONLY_".
 
@@ -115,7 +115,7 @@ What the app says today, so it's clear what the lore would change. File names ar
 
 **Now-playing panel** (`public/index.html`): labels NOW PLAYING · SIGNAL (the station name) · GENRE · CITY · COUNTRY; small buttons WRONG GENRE? (when genres are picked) and FORGET SIGNAL; a LAST 5 tab on the right edge opens TRACK LOG // LAST 5.
 
-**Status line** (`public/app.js`): > SCANNING FREQUENCIES… · > LINK ESTABLISHED // 128 kbps MP3 · > SIGNAL LOST — RETUNING… · > SIGNAL STALLED · > STILL SCANNING — WIDENING SEARCH… · > RETUNING TO SAVED SIGNAL… · > LINK PAUSED · > TAP PLAY TO START AUDIO · > WRONG GENRE REPORTED — RETUNING… · > SIGNAL FORGOTTEN — RETUNING… · > SHARED SIGNAL RECEIVED · > GLOBE OFFLINE — AUDIO ONLY
+**Status line** (`public/app.js`): > SCANNING FREQUENCIES… · > LINK ESTABLISHED // 128 kbps MP3 · > SIGNAL LOST — RETUNING… · > SIGNAL STALLED · > STILL SCANNING — WIDENING SEARCH… · > RETUNING TO SAVED SIGNAL… · > RESUMING LAST SIGNAL… · > LINK PAUSED · > TAP PLAY TO START AUDIO · > WRONG GENRE REPORTED — RETUNING… · > SIGNAL FORGOTTEN — RETUNING… · > SHARED SIGNAL RECEIVED · > GLOBE OFFLINE — AUDIO ONLY
 
 **Saved panel and toasts**: SAVED SIGNALS · ADD RECEIVED SIGNAL · > SIGNAL SAVED · > SIGNAL REMOVED · > SIGNALS SYNCED · > THIS SIGNAL CANNOT BE CAPTURED
 

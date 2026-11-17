@@ -81,7 +81,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '52';
+  const BUILD = '53';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -116,6 +116,10 @@
     favorites: store.get('sw.favorites', []),
     heard: new Set(store.get('sw.heard', [])), // every station ever played here, so random play never repeats
     hidden: store.get('sw.hidden', []), // stations flagged "not music"
+    lastStation: (() => { // the station last played here (or newer, from sync): JACK IN resumes it
+      const l = store.get('sw.lastStation', null);
+      return l && typeof l === 'object' && l.uuid && l.url ? l : null;
+    })(),
     showFavDots: store.get('sw.showFavDots', true),
     history: [],
     played: new Set(),
@@ -357,6 +361,7 @@
     state.played.add(station.uuid);
     if (!station.egg) markHeard(station.uuid);
     state.history.push({ uuid: station.uuid, lat: station.lat, lng: station.lng, cc: station.countryCode });
+    if (!station.egg) rememberLast(station);
     state.title = station.title || null;
     state.titleSince = Date.now();
     state.playedOnce = false;
@@ -375,6 +380,23 @@
     playUrl(station);
     state.timers.poll = setInterval(pollTitle, POLL_MS);
     setPrevButton();
+  }
+
+  // The station last tuned, kept so JACK IN can resume it. Not a settings edit,
+  // so it never calls markChanged() (that would affect the sync conflict logic).
+  function rememberLast(s) {
+    state.lastStation = {
+      uuid: s.uuid, name: s.name, url: s.url, favicon: s.favicon, tags: s.tags, genre: s.genre,
+      city: s.city, country: s.country, countryCode: s.countryCode, lat: s.lat, lng: s.lng,
+      bitrate: s.bitrate, codec: s.codec, cors: s.cors, at: Date.now(),
+    };
+    store.set('sw.lastStation', state.lastStation);
+    pushLast();
+  }
+  // The last station, if JACK IN can resume it (it has a stream and wasn't forgotten).
+  function resumable() {
+    const l = state.lastStation;
+    return l && l.uuid && l.url && !state.hidden.includes(l.uuid) ? l : null;
   }
 
   // Steps back one station. The station you leave goes to the front of the
@@ -1559,12 +1581,12 @@
     sharedOnOpen = addSharedStation(m[0].toLowerCase(), { quiet: true });
   })();
 
-  async function tuneSaved(f) {
+  async function tuneSaved(f, message = '> RETUNING TO SAVED SIGNAL…') {
     if (state.switching) return;
     start(false);
     state.switching = true;
     setBusy(true);
-    status('> RETUNING TO SAVED SIGNAL…');
+    status(message);
     await tune({ ...f, title: f.lastSong || null }).catch(() => {});
     state.switching = false;
     setBusy(false);
@@ -1948,7 +1970,12 @@
 
   $('jackIn').addEventListener('click', async () => {
     if (!sharedOnOpen && firstVisit && !state.onboarded) { start(false); return openOnboarding(); }
-    if (!sharedOnOpen) return start(true);
+    if (!sharedOnOpen) {
+      // Pick up where the listener left off (if that stream fails, troubled() moves on to a random one).
+      const last = resumable();
+      if (last) { const { at, ...station } = last; return tuneSaved(station, '> RESUMING LAST SIGNAL…'); }
+      return start(true);
+    }
     start(false);
     const f = await sharedOnOpen;
     sharedOnOpen = null;
@@ -2060,11 +2087,46 @@
     setSyncState('SYNCED');
   }
 
+  // The last station rides on the same row in its own column (see the
+  // last_station migration). Until that has been run, everything else must
+  // keep syncing, so a "no such column" error just turns the feature off.
+  let lastColMissing = false;
+  let lastTimer = null;
+  const isLastColError = (e) => Boolean(e) && (e.code === '42703' || e.code === 'PGRST204' || /last_station/i.test(e.message || ''));
+
+  // Sends only the last station (never the other columns, never sw.changedAt/syncedAt).
+  function pushLast() {
+    if (!sb || !user || lastColMissing || !state.lastStation) return;
+    clearTimeout(lastTimer);
+    lastTimer = setTimeout(async () => {
+      lastTimer = null;
+      if (!sb || !user || lastColMissing || !state.lastStation) return;
+      try {
+        const { error } = await sb.from('user_settings').update({ last_station: state.lastStation }).eq('user_id', user.id);
+        if (isLastColError(error)) lastColMissing = true; // other errors: the next station change retries
+      } catch (_) { /* best-effort */ }
+    }, 4000);
+  }
+
   async function pull() {
     if (!sb || !user) return;
     setSyncState('SYNCING…');
-    const { data, error } = await sb.from('user_settings').select('favorites, genres, hidden, updated_at').eq('user_id', user.id).maybeSingle();
+    const selectRow = (cols) => sb.from('user_settings').select(cols).eq('user_id', user.id).maybeSingle();
+    let { data, error } = await selectRow(lastColMissing ? 'favorites, genres, hidden, updated_at' : 'favorites, genres, hidden, last_station, updated_at');
+    if (error && !lastColMissing && isLastColError(error)) {
+      lastColMissing = true;
+      ({ data, error } = await selectRow('favorites, genres, hidden, updated_at'));
+    }
     if (error) { setSyncState('OFFLINE — WILL RETRY'); return; }
+    // The newer of this device's last station and the account's wins.
+    const remoteLast = data && data.last_station;
+    if (remoteLast && typeof remoteLast === 'object' && remoteLast.uuid && remoteLast.url && Number.isFinite(remoteLast.at)) {
+      if (!state.lastStation || remoteLast.at > (state.lastStation.at || 0)) {
+        state.lastStation = remoteLast;
+        store.set('sw.lastStation', remoteLast);
+        updateBootLog();
+      } else if (remoteLast.at < state.lastStation.at) pushLast();
+    } else if (data && !lastColMissing && state.lastStation) pushLast();
     const firstOnDevice = store.get('sw.syncUser', null) !== user.id;
     const localEdits = store.get('sw.changedAt', 0) > store.get('sw.syncedAt', 0);
     if (!data) {
@@ -2426,8 +2488,19 @@
   renderFavorites();
   requestAnimationFrame(drawViz);
   const log = $('bootLog');
+  let bootReady = false;
+  function updateBootLog() {
+    if (!bootReady) return;
+    const last = !sharedOnOpen && !firstVisit ? resumable() : null;
+    if (sharedOnOpen) log.textContent = '> SHARED SIGNAL RECEIVED // JACK IN TO PLAY';
+    else if (last) {
+      const name = String(last.name || 'UNKNOWN SIGNAL').trim().toUpperCase();
+      log.textContent = `> LAST SIGNAL: ${name.length > 32 ? `${name.slice(0, 31).trimEnd()}…` : name} // JACK IN TO RESUME`;
+    } else log.textContent = '> WORLD GRID ONLINE // READY';
+  }
   initGlobe().then(() => {
-    log.textContent = sharedOnOpen ? '> SHARED SIGNAL RECEIVED // JACK IN TO PLAY' : '> WORLD GRID ONLINE // READY';
+    bootReady = true;
+    updateBootLog();
     updatePoints();
   });
   fillQueue(); // start vetting while the boot screen is up
