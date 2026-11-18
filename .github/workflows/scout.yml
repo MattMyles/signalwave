@@ -2,6 +2,13 @@
 # (Supabase station_pool) stocked, so NEXT doesn't have to vet stations live.
 # See "Station shelf" in README.md. Needs two repository secrets:
 # SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY. Without them the run does nothing.
+#
+# The scout works through Radio Browser's whole station list. It downloads that
+# list at most once a day and keeps it in the Actions cache (.scout-cache/): the
+# restore step finds the newest saved copy, the scout downloads a new one only if
+# that copy is over 24 h old (or missing) and says so in its `rb_downloaded`
+# output, and only then is the cache saved again (under a key with the day and run
+# id, so a save never collides with an older one).
 name: Station scout
 
 on:
@@ -22,8 +29,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Today's date (for the list cache)
+        id: date
+        run: echo "day=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+      - name: Restore the Radio Browser list
+        uses: actions/cache/restore@v4
+        with:
+          path: .scout-cache
+          key: rb-${{ steps.date.outputs.day }}
+          restore-keys: rb-
       - name: Run the scout
+        id: scout
         run: node scripts/scout.js
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Save the Radio Browser list
+        if: ${{ always() && steps.scout.outputs.rb_downloaded == 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .scout-cache
+          key: rb-${{ steps.date.outputs.day }}-${{ github.run_id }}

@@ -355,6 +355,247 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   global.fetch = realFetch;
 
+  console.log('Full station list');
+  {
+    const fs = require('fs');
+    const os = require('os');
+    const pathMod = require('path');
+    const radio = require('../lib/radio');
+    const sl = require('../lib/scoutlist');
+    const jsonRes = (json, status = 200, headers = {}) => ({ ok: status < 400, status, url: '', headers: { get: (k) => headers[k.toLowerCase()] || null }, json: async () => json, text: async () => (typeof json === 'string' ? json : JSON.stringify(json)) });
+    const saved = global.fetch;
+    const makeList = (n) => Array.from({ length: n }, (_, i) => ({ stationuuid: `e0000000-0000-4000-8000-${String(i).padStart(12, '0')}`, name: `S${i}`, url_resolved: `https://l${i}.test/s`, tags: 'rock', countrycode: 'JP', changetimestamp: 'x', votes: 5, clickcount: 9, ssl_error: 0, hls: 0, lastcheckok: 1 }));
+
+    await t('allStations pages with hidebroken and order=stationuuid until a short page, keeping only the fields we use', async () => {
+      radio.resetServers();
+      const all = makeList(25); const calls = [];
+      global.fetch = async (url, init = {}) => {
+        const u = new URL(url);
+        if (u.pathname === '/json/servers') return jsonRes([{ name: 'm1.test' }]);
+        calls.push({ q: Object.fromEntries(u.searchParams), path: u.pathname, ua: (init.headers || {})['User-Agent'], signal: Boolean(init.signal) });
+        const off = Number(u.searchParams.get('offset')), lim = Number(u.searchParams.get('limit'));
+        return jsonRes(all.slice(off, off + lim));
+      };
+      let out;
+      try { out = await radio.allStations({ pageSize: 10 }); } finally { global.fetch = saved; }
+      assert.strictEqual(out.length, 25); assert.strictEqual(calls.length, 3);
+      assert.deepStrictEqual(calls.map((c) => c.q.offset), ['0', '10', '20']);
+      for (const c of calls) { assert.strictEqual(c.path, '/json/stations'); assert.strictEqual(c.q.hidebroken, 'true'); assert.strictEqual(c.q.order, 'stationuuid'); assert.strictEqual(c.q.limit, '10'); assert(/NeoEarthRadio/.test(c.ua)); assert(c.signal); }
+      assert(!('votes' in out[0]) && !('clickcount' in out[0]) && !('changetimestamp' in out[0]));
+      for (const k of ['stationuuid', 'name', 'url_resolved', 'tags', 'countrycode', 'ssl_error', 'hls', 'lastcheckok']) assert(k in out[0], k);
+      assert.deepStrictEqual(out.map((x) => x.stationuuid), all.map((x) => x.stationuuid));
+    });
+    await t('an exactly full last page costs one empty page; a default page size is 10,000', async () => {
+      radio.resetServers();
+      const all = makeList(20); const asked = [];
+      global.fetch = async (url) => {
+        const u = new URL(url);
+        if (u.pathname === '/json/servers') return jsonRes([{ name: 'm1.test' }]);
+        asked.push(u.searchParams.get('limit') + '@' + u.searchParams.get('offset'));
+        const off = Number(u.searchParams.get('offset')), lim = Number(u.searchParams.get('limit'));
+        return jsonRes(all.slice(off, off + lim));
+      };
+      try { assert.strictEqual((await radio.allStations({ pageSize: 10 })).length, 20); assert.strictEqual(asked.length, 3); asked.length = 0; await radio.allStations(); } finally { global.fetch = saved; }
+      assert.deepStrictEqual(asked, ['10000@0']);
+    });
+    await t('a mirror that fails is skipped, and the one that works is kept for the following pages', async () => {
+      radio.resetServers();
+      const all = makeList(25); const hits = { 'm1.test': 0, 'm2.test': 0 }; const okHosts = [];
+      global.fetch = async (url) => {
+        const u = new URL(url);
+        if (u.pathname === '/json/servers') return jsonRes([{ name: 'm1.test' }, { name: 'm2.test' }]);
+        hits[u.hostname]++;
+        if (u.hostname === 'm1.test') return jsonRes({}, 500);
+        okHosts.push(u.hostname);
+        const off = Number(u.searchParams.get('offset')), lim = Number(u.searchParams.get('limit'));
+        return jsonRes(all.slice(off, off + lim));
+      };
+      try { assert.strictEqual((await radio.allStations({ pageSize: 10 })).length, 25); } finally { global.fetch = saved; }
+      assert.deepStrictEqual(okHosts, ['m2.test', 'm2.test', 'm2.test']); assert(hits['m1.test'] <= 1, JSON.stringify(hits));
+    });
+    await t('when every mirror fails the download throws instead of returning half a list', async () => {
+      radio.resetServers();
+      const all = makeList(25); let page = 0;
+      global.fetch = async (url) => {
+        const u = new URL(url);
+        if (u.pathname === '/json/servers') return jsonRes([{ name: 'm1.test' }, { name: 'm2.test' }]);
+        if (page++ >= 1) return jsonRes({}, 503);
+        return jsonRes(all.slice(0, 10));
+      };
+      try { await assert.rejects(() => radio.allStations({ pageSize: 10 }), /503/); } finally { global.fetch = saved; }
+    });
+    await t('searchStations can ask for the newest changes first', async () => {
+      radio.resetServers(); let q;
+      global.fetch = async (url) => { const u = new URL(url); if (u.pathname === '/json/servers') return jsonRes([{ name: 'm1.test' }]); q = Object.fromEntries(u.searchParams); return jsonRes([]); };
+      try { await radio.searchStations({ recent: true, limit: 500 }); } finally { global.fetch = saved; }
+      assert.strictEqual(q.order, 'changetimestamp'); assert.strictEqual(q.reverse, 'true'); assert.strictEqual(q.limit, '500'); assert.strictEqual(q.hidebroken, 'true');
+    });
+
+    const dir = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'scoutcache-'));
+    const file = pathMod.join(dir, 'sub', 'rb-stations.json.gz');
+    let clock = 1700000000000; const H = 3600000;
+    const now = () => clock;
+    let downloads = 0; let mode = 'ok'; let generation = 0;
+    const download = async () => { downloads++; if (mode === 'fail') throw new Error('mirrors down'); if (mode === 'tiny') return makeList(1); generation++; return makeList(5).map((x) => ({ ...x, name: `gen${generation}` })); };
+    const load = (extra = {}) => sl.loadFullList({ file, download, now, minCount: 2, log: () => {}, ...extra });
+    await t('list cache: first run downloads and saves a gzipped file; a fresh file is used without downloading', async () => {
+      let r = await load();
+      assert.strictEqual(r.source, 'download'); assert.strictEqual(r.downloaded, true); assert.strictEqual(r.stations.length, 5); assert.strictEqual(downloads, 1);
+      assert(fs.existsSync(file)); assert.deepStrictEqual([...fs.readFileSync(file).subarray(0, 2)], [0x1f, 0x8b]); assert(r.bytes > 0);
+      clock += 23 * H;
+      r = await load();
+      assert.strictEqual(r.source, 'cache'); assert.strictEqual(r.downloaded, false); assert.strictEqual(downloads, 1); assert.strictEqual(r.stations[0].name, 'gen1'); assert.strictEqual(Math.round(r.ageMs / H), 23);
+    });
+    await t('list cache: a file over 24 h old triggers a fresh download', async () => {
+      clock += 2 * H; // 25 h
+      const r = await load();
+      assert.strictEqual(r.source, 'download'); assert.strictEqual(downloads, 2); assert.strictEqual(r.stations[0].name, 'gen2'); assert.strictEqual(r.ageMs, 0);
+      assert.strictEqual(sl.readCache(file).fetchedAt, clock); // the age is kept inside the file, not in its file time
+    });
+    await t('list cache: a failed download falls back to the old file, even a tiny list counts as failed, and no file at all gives null', async () => {
+      clock += 30 * H; mode = 'fail';
+      let r = await load();
+      assert.strictEqual(r.source, 'stale'); assert.strictEqual(r.stations[0].name, 'gen2'); assert.strictEqual(Math.round(r.ageMs / H), 30); assert.strictEqual(r.downloaded, false);
+      mode = 'tiny';
+      r = await load();
+      assert.strictEqual(r.source, 'stale'); assert.strictEqual(sl.readCache(file).stations.length, 5); // the tiny list was not saved over it
+      fs.writeFileSync(file, 'not gzip at all'); // a damaged file counts as missing
+      assert.strictEqual(await load(), null);
+      fs.rmSync(file);
+      mode = 'fail'; assert.strictEqual(await load(), null);
+      mode = 'ok'; r = await load();
+      assert.strictEqual(r.source, 'download'); assert(fs.existsSync(file));
+    });
+    fs.rmSync(dir, { recursive: true, force: true });
+
+    console.log('Offline checks and fair order');
+    const { orderCandidates, offlineCheck } = sl;
+    const ctx = (over = {}) => ({ haveUuid: new Set(['on-file']), haveUrl: new Set([shelf.normalizeUrl('https://known.test/stream')]), styleExtra: shelf.STYLE_TAGS, ...over });
+    const st = (over = {}) => ({ stationuuid: 'x1', name: 'Tokyo Rock', url_resolved: 'https://ok.test/stream', tags: 'rock,classic rock', countrycode: 'JP', geo_lat: '35.69', geo_long: '139.69', bitrate: 128, codec: 'MP3', hls: 0, ssl_error: 0, ...over });
+    await t('offline checks give each station one reason, cheapest check first', async () => {
+      const why = async (over) => { const r = await offlineCheck(st(over), ctx()); return r.skip || 'ok'; };
+      assert.strictEqual(await why({}), 'ok');
+      assert.strictEqual(await why({ stationuuid: 'on-file' }), 'on_shelf');
+      assert.strictEqual(await why({ url_resolved: 'http://plain.test/x' }), 'skip_not_https');
+      assert.strictEqual(await why({ url_resolved: '' }), 'skip_not_https');
+      assert.strictEqual(await why({ ssl_error: 1 }), 'skip_ssl_error');
+      assert.strictEqual(await why({ url_resolved: `https://long.test/${'a'.repeat(2000)}` }), 'skip_long_url');
+      assert.strictEqual(await why({ url_resolved: 'https://known.test/stream/' }), 'skip_duplicate');
+      assert.strictEqual(await why({ url_resolved: 'https://pl.test/live.m3u8' }), 'skip_playlist');
+      assert.strictEqual(await why({ hls: 1 }), 'skip_playlist');
+      assert.strictEqual(await why({ bitrate: 48 }), 'skip_low_bitrate'); // MP3 floor 64
+      assert.strictEqual(await why({ bitrate: 48, codec: 'AAC+' }), 'ok'); // AAC floor 40
+      assert.strictEqual(await why({ bitrate: 32, codec: 'AAC' }), 'skip_low_bitrate');
+      assert.strictEqual(await why({ bitrate: 0 }), 'ok'); // unknown bitrate is judged by the probe
+      assert.strictEqual(await why({ tags: 'news,talk' }), 'skip_not_music');
+      assert.strictEqual(await why({ tags: 'ニュース' }), 'skip_not_music'); // translated before the blocklist
+      assert.strictEqual(await why({ geo_lat: null, geo_long: null, state: 'Somewhere', name: 'Mystery Rock' }), 'skip_no_city');
+      const placed = await offlineCheck(st({ geo_lat: null, geo_long: null, state: 'Tokyo Prefecture' }), ctx());
+      assert.strictEqual(placed.cand.place.city, 'Tokyo'); assert.strictEqual(placed.cand.place.how, 'state');
+      assert.strictEqual((await offlineCheck(st(), ctx())).cand.place.how, 'coords');
+    });
+
+    const cand = (cc, i, how = 'coords', nu) => ({ cc, nu: nu || `${cc}-${i}`, place: { how }, i });
+    const many = (cc, n, how) => Array.from({ length: n }, (_, i) => cand(cc, i, how));
+    await t('order: countries with the fewest shelf stations come first, one station each per round', () => {
+      const cands = [...many('US', 50), ...many('DE', 30), ...many('JP', 3), ...many('NZ', 2)];
+      const { list, countries } = orderCandidates(cands, { US: 500, DE: 200 }, { max: 12 });
+      const ccs = list.map((c) => c.cc);
+      assert.deepStrictEqual(new Set(ccs.slice(0, 2)), new Set(['JP', 'NZ']));
+      assert.deepStrictEqual(ccs.slice(2, 4), ['DE', 'US']);
+      assert.deepStrictEqual(ccs.slice(4, 6).sort(), ['JP', 'NZ']); assert.deepStrictEqual(ccs.slice(6, 8), ['DE', 'US']);
+      assert.strictEqual(countries, 4); assert.strictEqual(list.length, 12);
+      // JP has 3 and NZ 2: once they run dry the rest are shared by DE and US
+      assert.deepStrictEqual(ccs.slice(8), ['JP', 'DE', 'US', 'DE']);
+    });
+    await t('order: a run spreads over many countries, never more than the cap from one, and ties are broken differently per run', () => {
+      const cands = [];
+      for (let k = 0; k < 40; k++) cands.push(...many(`C${String(k).padStart(2, '0')}`, 30));
+      cands.push(...many('US', 600));
+      const { list, countries } = orderCandidates(cands, { US: 900 }, { max: 100, cap: 5 });
+      assert.strictEqual(list.length, 100); assert.strictEqual(countries, 41);
+      const per = {}; for (const c of list) per[c.cc] = (per[c.cc] || 0) + 1;
+      assert(Math.max(...Object.values(per)) <= 5, JSON.stringify(per)); assert.strictEqual(per.US, 2); // US is last in each round
+      const first = (rng) => orderCandidates(cands, {}, { max: 6, rng }).list.map((c) => c.cc).join();
+      assert.notStrictEqual(first(() => 0), first(() => 0.99));
+      assert.strictEqual(orderCandidates(cands, {}, { max: 41 }).countries, 41);
+    });
+    await t('order: within a country the best-placed come first, and one stream address is taken once', () => {
+      const cands = [cand('FR', 1, 'homepage'), cand('FR', 2, 'name'), cand('FR', 3, 'coords'), cand('FR', 4, 'state'), cand('FR', 5, 'stream'), cand('FR', 6, 'coords'), cand('FR', 7, 'tags', 'FR-3')];
+      const { list, duplicates } = orderCandidates(cands, {});
+      assert.deepStrictEqual(list.slice(0, 2).map((c) => c.place.how), ['coords', 'coords']);
+      assert.strictEqual(list[2].place.how, 'state'); assert.strictEqual(list[3].place.how, 'name');
+      assert.deepStrictEqual(list.slice(4).map((c) => c.place.how).sort(), ['homepage', 'stream']);
+      assert.strictEqual(duplicates, 1); assert.strictEqual(list.length, 6); assert(!list.some((c) => c.i === 7));
+      assert.deepStrictEqual(orderCandidates([], {}).list, []);
+    });
+
+    console.log('Icecast directory formats');
+    await t('JSON in any of the known shapes gives entries', () => {
+      const arr = shelf.parseDirectory(JSON.stringify([
+        { listen_url: 'https://a.test/1', server_name: 'A', genre: 'Rock', server_type: 'audio/mpeg', bitrate: '128', current_song: 'X - Y' },
+        { listenurl: 'http://b.test:8000/2', stream_name: 'B', genres: ['jazz', 'blues'], content_type: 'audio/aacp', br: 64, song: 'P - Q' },
+        { url: 'https://c.test/3', name: 'C', tags: 'pop, dance', type: 'MP3' }, // a bare codec name becomes its MIME type
+        { stream: 'https://d.test/4', title: 'D Only Title' },
+        { stream_url: 'https://e.test/5', name: 'E', title: 'The Song Playing' },
+        { name: 'no address' }, { url: 'not a url', name: 'bad' }, null, 5,
+      ]));
+      assert.deepStrictEqual(arr.map((e) => e.url), ['https://a.test/1', 'http://b.test:8000/2', 'https://c.test/3', 'https://d.test/4', 'https://e.test/5']);
+      assert.deepStrictEqual(arr[0], { name: 'A', url: 'https://a.test/1', type: 'audio/mpeg', bitrate: 128, genre: 'Rock', song: 'X - Y' });
+      assert.deepStrictEqual([arr[1].name, arr[1].genre, arr[1].type, arr[1].bitrate, arr[1].song], ['B', 'jazz, blues', 'audio/aacp', 64, 'P - Q']);
+      assert.deepStrictEqual([arr[2].genre, arr[2].type], ['pop, dance', 'audio/mpeg']);
+      assert.deepStrictEqual([arr[3].name, arr[3].song], ['D Only Title', '']); // title is the name when nothing else is
+      assert.deepStrictEqual([arr[4].name, arr[4].song], ['E', 'The Song Playing']); // ...and the song when a name exists
+      const wrapped = (o) => shelf.parseDirectory(JSON.stringify(o)).length;
+      assert.strictEqual(wrapped({ stations: [{ url: 'https://a.test/1' }, { url: 'https://a.test/2' }] }), 2);
+      assert.strictEqual(wrapped({ whatever: [{ url: 'https://a.test/1' }], other: [{ url: 'https://a.test/2' }, { url: 'https://a.test/3' }] }), 2); // the longest list
+      assert.strictEqual(wrapped({ data: { entries: [{ url: 'https://a.test/1' }] } }), 1);
+      assert.strictEqual(wrapped({ count: 0 }), 0);
+      assert.strictEqual(shelf.parseDirectory([{ url: 'https://a.test/1' }]).length, 1); // already parsed
+    });
+    await t('XML still parses, and empty, broken and HTML answers give nothing', () => {
+      assert.strictEqual(shelf.parseDirectory('<directory><entry><server_name>A</server_name><listen_url>https://a.test/1</listen_url></entry></directory>').length, 1);
+      for (const bad of ['', '   ', '<directory></directory>', '{not json', '[', null, undefined, '<!DOCTYPE html><html><body><entry><listen_url>https://a.test/1</listen_url></entry></body></html>', '<html><entry><listen_url>https://a.test/1</listen_url></entry></html>']) assert.deepStrictEqual(shelf.parseDirectory(bad), [], String(bad));
+    });
+    await t('endpoints are tried in order and the first with entries wins; every attempt is logged', async () => {
+      const asked = []; const logs = [];
+      const answers = {
+        'https://dir.xiph.org/yp.xml': () => jsonRes('<directory></directory>', 200, { 'content-type': 'application/xml' }),
+        'https://api.dir.xiph.org/experimental/full': () => jsonRes('Not found', 404, { 'content-type': 'text/html' }),
+        'http://api.dir.xiph.org/experimental/full': () => jsonRes([{ listen_url: 'https://j.test/1', server_name: 'J', genre: 'rock' }], 200, { 'content-type': 'application/json' }),
+      };
+      const fetchImpl = async (url) => { asked.push(url); const f = answers[url]; if (!f) throw new Error('should not be asked'); return f(); };
+      const res = await sl.fetchIcecastDirectory({ fetchImpl, log: (m) => logs.push(m) });
+      assert.deepStrictEqual(asked, ['https://dir.xiph.org/yp.xml', 'https://api.dir.xiph.org/experimental/full', 'http://api.dir.xiph.org/experimental/full']);
+      assert.strictEqual(res.used, 'http://api.dir.xiph.org/experimental/full'); assert.strictEqual(res.entries, 1); assert.strictEqual(shelf.parseDirectory(res.text).length, 1);
+      assert.deepStrictEqual(res.tried.map((x) => [x.status, x.entries || 0]), [[200, 0], [404, 0], [200, 1]]);
+      assert.strictEqual(logs.length, 3); assert(logs[0].includes('200') && logs[0].includes('application/xml') && logs[0].includes('<directory></directory>'), logs[0]);
+      assert(logs[1].includes('404') && logs[1].includes('text/html'), logs[1]);
+      const summary = sl.icecastSummary(res);
+      assert(/via #3 \(1 entries\)/.test(summary) && summary.length < 250, summary);
+    });
+    await t('the first endpoint is enough when it works; an HTML page or a network error never counts; all failing gives none', async () => {
+      let asked = [];
+      let res = await sl.fetchIcecastDirectory({ fetchImpl: async (u) => { asked.push(u); return jsonRes('<directory><entry><server_name>A</server_name><listen_url>https://a.test/1</listen_url></entry></directory>', 200, { 'content-type': 'application/xml' }); }, log: () => {} });
+      assert.strictEqual(asked.length, 1); assert.strictEqual(res.used, 'https://dir.xiph.org/yp.xml');
+      asked = [];
+      res = await sl.fetchIcecastDirectory({
+        fetchImpl: async (u) => { asked.push(u); if (asked.length === 1) throw new Error('getaddrinfo ENOTFOUND'); return jsonRes('<html><entry><listen_url>https://h.test/1</listen_url></entry></html>', 200, { 'content-type': 'text/html; charset=utf-8' }); },
+        log: () => {},
+      });
+      assert.strictEqual(asked.length, 4); assert.strictEqual(res.used, null); assert.strictEqual(res.text, ''); assert(res.tried[0].error.includes('ENOTFOUND'));
+      assert(/none/.test(sl.icecastSummary(res)));
+    });
+    await t('the endpoints share one time box', async () => {
+      let clock2 = 0; const asked = [];
+      const res = await sl.fetchIcecastDirectory({
+        fetchImpl: async (u) => { asked.push(u); clock2 += 25000; return jsonRes('', 200, { 'content-type': 'application/xml' }); },
+        now: () => clock2, budgetMs: 60000, log: () => {},
+      });
+      assert.strictEqual(asked.length, 3); assert.strictEqual(res.used, null); assert(res.tried[3].error.includes('no time'));
+    });
+  }
+
   console.log('The scout');
   const { run } = require('../scripts/scout');
   const vet = require('../lib/vet');
@@ -387,13 +628,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       },
       async getAll(path) {
         if (path.includes('select=*')) return this.get(path);
-        return [...pool.values()].map((r) => ({ uuid: r.uuid, url: r.url, status: r.status }));
+        return [...pool.values()].map((r) => ({ uuid: r.uuid, url: r.url, status: r.status, country_code: r.country_code }));
       },
       async rpc(fn) { assert.strictEqual(fn, 'pool_stats'); return [{ key: '*', n: [...pool.values()].filter((r) => r.status === 'active').length }]; },
     };
   }
   const rb = (n, over = {}) => ({ stationuuid: `b0000000-0000-4000-8000-00000000000${n}`, name: `Station ${n}`, url_resolved: `https://s${n}.test/stream`, tags: 'rock,classic rock', countrycode: 'JP', country: 'Japan', geo_lat: '35.69', geo_long: '139.69', bitrate: 128, codec: 'MP3', ...over });
-  const quiet = { log: () => {}, itunesSpacingMs: 0, sleep: async () => {}, sliceIndex: () => 0, artistCountry: async (a) => (/pillows/i.test(a) ? 'JP' : 'GB') };
+  const quiet = { log: () => {}, loadFull: async () => null, itunesSpacingMs: 0, sleep: async () => {}, sliceIndex: () => 0, artistCountry: async (a) => (/pillows/i.test(a) ? 'JP' : 'GB') };
   // What each fake stream "plays".
   const plays = { 1: 'The Pillows - Funny Bunny', 2: 'Led Zeppelin - Kashmir', 3: 'Third Band - Third Song', 5: 'Some Band - Some Song' };
   const fakeProbe = async (url) => {
@@ -529,6 +770,69 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       songInfo: async (title, opts) => { if (await opts.gate()) itunes++; return { info: null, known: false }; }, artistCountry: async () => { mb++; return 'JP'; } });
     assert(itunes <= 5, `itunes ${itunes}`); assert(mb <= 7, `mb ${mb}`);
     assert([...db.pool.values()].filter((r) => r.status === 'active').length === 40);
+  });
+  // The full Radio Browser list.
+  const SPOTS = { JP: ['35.69', '139.69'], DE: ['52.52', '13.40'], BR: ['-23.55', '-46.63'], NZ: ['-36.85', '174.76'] };
+  const fullStation = (cc, i, over = {}) => ({ stationuuid: `f${cc.charCodeAt(0).toString(16)}${cc.charCodeAt(1).toString(16)}000-0000-4000-8000-${String(i).padStart(12, '0')}`, name: `${cc} Rock ${i}`, url_resolved: `https://${cc.toLowerCase()}${i}.full.test/s`, tags: 'rock', countrycode: cc, country: cc, geo_lat: SPOTS[cc][0], geo_long: SPOTS[cc][1], bitrate: 128, codec: 'MP3', ...over });
+  const fullList = (spec) => Object.entries(spec).flatMap(([cc, n]) => Array.from({ length: n }, (_, i) => fullStation(cc, i)));
+  const loaded = (stations, over = {}) => async () => ({ stations, source: 'cache', ageMs: 3.5 * 3600000, bytes: 4096, downloaded: false, ...over });
+  const onShelf = (stn) => ({ uuid: stn.stationuuid, url: stn.url_resolved, source: 'radiobrowser', name: stn.name, tags: 'rock', country_code: stn.countrycode, status: 'active', genres: [], samples: [], ok_count: 2, fail_streak: 0, last_checked_at: new Date().toISOString(), first_seen_at: new Date().toISOString(), codec: 'MP3', bitrate: 128, local_ratio: null });
+  await t('with the full list: stations on file are dropped, countries with the fewest shelf stations are served first, and only a small top-up is searched', async () => {
+    const stations = fullList({ JP: 12, DE: 12, BR: 12 });
+    const seeded = [0, 1, 2].map((i) => onShelf(fullStation('JP', i))); // JP already has 3 on the shelf
+    const db = fakeDb(seeded);
+    const jobs = [];
+    const extra = fullStation('DE', 99, { name: 'Brand New Berlin Rock' });
+    const out = await run({ ...base(db), loadFull: loaded(stations), maxNew: 5, perCountryCap: 3, fetchYp: async () => '',
+      search: async (job) => { jobs.push(job); return job.recent ? [extra] : []; }, probe: async (u) => ({ ok: true, bitrate: 128, cors: false, title: `Band ${u.length} - Song ${u}` }) });
+    const added = [...db.pool.values()].filter((r) => !seeded.some((x) => x.uuid === r.uuid));
+    const byCc = {}; for (const r of added) byCc[r.country_code] = (byCc[r.country_code] || 0) + 1;
+    assert.deepStrictEqual(byCc, { BR: 2, DE: 2, JP: 1 }); assert.strictEqual(out.added, 5);
+    assert.strictEqual(out.counts.on_shelf, 3);
+    assert(jobs.length <= 20 && jobs.length >= 1 && jobs[0].recent === true, JSON.stringify(jobs.slice(0, 3)));
+    const notes = db.runs[0].notes;
+    assert(/full list 36 stations, 3\.5 h old \(cache, 4 KB gz\)/.test(notes), notes);
+    assert(/new to scout 34, pass offline 34, picked 5 from 3 countries/.test(notes), notes); // 36 + the recent one, minus 3 on file
+    assert(/countries probed 3; added by region: europe=2 latinamerica=2 eastasia=1|countries probed 3; added by region: latinamerica=2 europe=2 eastasia=1/.test(notes), notes);
+    assert(notes.length <= 1500);
+    assert(db.runs[0].discovered === 5);
+  });
+  await t('with the full list the top-up stations are searched too, and a full-list run still re-checks the shelf', async () => {
+    const stations = fullList({ NZ: 2 });
+    const seeded = [onShelf(fullStation('JP', 0))];
+    const db = fakeDb(seeded);
+    const out = await run({ ...base(db), loadFull: loaded(stations), fetchYp: async () => '', search: async (job) => (job.recent ? [fullStation('DE', 7, { name: 'Recent Berlin' })] : []), probe: fakeProbe });
+    const names = [...db.pool.values()].map((r) => r.name);
+    assert(names.includes('Recent Berlin') && names.includes('NZ Rock 0') && names.includes('NZ Rock 1'), names.join());
+    assert.strictEqual(out.checked, 4); // 3 new + the shelf station re-checked
+    assert.strictEqual([...db.pool.values()].find((r) => r.name === 'JP Rock 0').ok_count, 3);
+  });
+  await t('no full list (missing or failing): the old rotating keyword searches run', async () => {
+    for (const loadFull of [async () => null, async () => { throw new Error('boom'); }]) {
+      const db = fakeDb(); const jobs = [];
+      const out = await run({ ...base(db), loadFull, fetchYp: async () => '', search: async (job) => { jobs.push(job); return job.limit === 200 && !job.recent && jobs.length === 1 ? [rb(1), rb(2)] : []; } });
+      assert(jobs.length > 40, `jobs ${jobs.length}`); assert(!jobs.some((j) => j.recent));
+      assert.strictEqual(out.added, 2);
+      assert(/no full list/.test(db.runs[0].notes), db.runs[0].notes);
+    }
+  });
+  await t('the full list does not break the time budget', async () => {
+    const db = fakeDb();
+    const t0 = Date.now();
+    const out = await run({ ...base(db), budgetMs: 700, chunk: 4, concurrency: 2, loadFull: loaded(fullList({ DE: 150, BR: 150 })), fetchYp: async () => '', search: async () => [],
+      probe: async () => { await sleep(60); return { ok: true, bitrate: 128, title: 'Some Band - Some Song' }; } });
+    const took = Date.now() - t0;
+    assert(took < 1500, `took ${took} ms`); assert(out.checked > 0 && out.checked < 300, `checked ${out.checked}`);
+    assert(db.runs[0].finished_at && /stopped at the time budget/.test(db.runs[0].notes));
+  });
+  await t('Icecast JSON works in a run and its endpoint details reach the notes', async () => {
+    const db = fakeDb();
+    const json = JSON.stringify({ stations: [{ listen_url: 'http://ice1.test/beats', server_name: 'Berlin Beats', genre: ['Techno'], server_type: 'MP3', bitrate: '128' }, { listen_url: 'https://ice4.test/x', server_name: 'Nowhere Radio', genre: 'Techno' }] });
+    const report = { used: 'https://api.dir.xiph.org/experimental/full', entries: 2, tried: [{ url: 'https://dir.xiph.org/yp.xml', status: 200, type: 'application/xml', entries: 0 }, { url: 'https://api.dir.xiph.org/experimental/full', status: 200, type: 'application/json', entries: 2 }] };
+    await run({ ...base(db), search: async () => [], fetchYp: async ({ report: r }) => { r(report); return json; } });
+    const ice = [...db.pool.values()].filter((r) => r.source === 'icecast');
+    assert.strictEqual(ice.length, 1); assert.strictEqual(ice[0].name, 'Berlin Beats'); assert.strictEqual(ice[0].url, 'https://ice1.test/beats');
+    assert(/icecast via #2 \(2 entries\) \[1:200\/xml\/0 2:200\/json\/2\]/.test(db.runs[0].notes), db.runs[0].notes);
   });
   await t('without a shelf database the scout says so instead of crashing', async () => {
     const db = fakeDb(); db.insert = async () => { const e = new Error('Supabase POST /scout_runs answered 404'); e.status = 404; throw e; };
