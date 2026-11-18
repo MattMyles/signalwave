@@ -2,7 +2,7 @@
 // shared station to someone's saved list. Unlike /api/next this doesn't
 // require song titles: the person chose this station on purpose.
 const { stationByUuid } = require('../lib/radio');
-const { reverseGeocode, largestCity, cityFromText } = require('../lib/geo');
+const { reverseGeocode, largestCity, placeFromStation } = require('../lib/geo');
 const { probeStream } = require('../lib/icy');
 const { rememberStream, splitTags } = require('../lib/vet');
 const { poolLookup } = require('../lib/pool');
@@ -64,9 +64,9 @@ module.exports = async function handler(req, res) {
     const place = await reverseGeocode(lat, lng, cc);
     if (place) city = place.city;
   } else {
-    // No map location: its listed region or a city in its name, else the
+    // No map location: a city from its region, name, tags or addresses, else the
     // country's largest city so the globe still flies somewhere.
-    const big = cityFromText(s.state, s.name, cc) || largestCity(cc);
+    const big = placeFromStation(s) || largestCity(cc);
     if (big) { lat = big.lat; lng = big.lng; city = big.city; }
   }
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return sendJson(res, 422, { error: "That station has no location, so it can't be shown on the globe." });

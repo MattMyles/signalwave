@@ -182,6 +182,9 @@ async function run(overrides = {}) {
 
     const seenUrl = new Set();
     const candidates = [];
+    const placedBy = {}; // how each new music station was placed: coords, state, name, tags, homepage, stream
+    const unplaced = []; // sample of music stations that still have no city
+    let unplacedSeen = 0;
     const styleExtra = shelf.STYLE_TAGS;
     for (const s of vet.shuffle([...raw.values()])) {
       if (candidates.length >= D.maxNew || stopped() || D.now() > discoverEnd + 60000) break;
@@ -192,10 +195,19 @@ async function run(overrides = {}) {
       const nu = shelf.normalizeUrl(url);
       if (haveUrl.has(nu) || seenUrl.has(nu)) { bump('skip_duplicate'); continue; }
       if (/m3u8|\.pls$|\.m3u$/i.test(url) || s.hls === 1) { bump('skip_playlist'); continue; }
-      const place = await locateStation(s);
-      if (!place) { bump('skip_no_city'); continue; }
       const rawTags = vet.splitTags(s.tags);
       if (!vet.isMusicStation(translateTags(rawTags), styleExtra)) { bump('skip_not_music'); continue; }
+      const place = await locateStation(s);
+      if (!place) {
+        bump('skip_no_city');
+        // Keep 20 random examples (every music station without a city has the same chance), to tune the city detection from.
+        unplacedSeen++;
+        const line = [s.countrycode, s.state, s.name, s.homepage, s.tags].map((x) => String(x || '').replace(/\s+/g, ' ').trim().slice(0, 70)).join(' | ');
+        if (unplaced.length < 20) unplaced.push(line);
+        else { const j = Math.floor(Math.random() * unplacedSeen); if (j < 20) unplaced[j] = line; }
+        continue;
+      }
+      placedBy[place.how || 'other'] = (placedBy[place.how || 'other'] || 0) + 1;
       seenUrl.add(nu);
       candidates.push({
         uuid: s.stationuuid, source: 'radiobrowser', name: vet.cleanName(s.name) || 'Unnamed station', url,
@@ -204,6 +216,13 @@ async function run(overrides = {}) {
         country_code: (s.countrycode || place.countryCode || '').toUpperCase() || null,
         city: place.city, lat: place.lat, lng: place.lng, codec: s.codec || null, bitrate: Number(s.bitrate) || null,
       });
+    }
+
+    const placedNote = Object.entries(placedBy).sort((a, b) => b[1] - a[1]).map(([k, v]) => `placed_${k}=${v}`).join(' ');
+    if (placedNote) note(placedNote);
+    if (unplaced.length) {
+      log(`Music stations still without a city: ${unplacedSeen} (${unplaced.length} random ones below: country | region | name | homepage | tags)`);
+      for (const line of unplaced) log(`  ${line}`);
     }
 
     // The Icecast directory.

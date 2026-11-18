@@ -443,6 +443,30 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     assert(r.finished_at); assert.strictEqual(r.added, 4); assert.strictEqual(r.active_total, 4); assert(r.discovered >= 8 && r.checked >= 8);
     assert.strictEqual(out.added, 4);
   });
+  await t('stations without coordinates are placed from their region, tags or addresses, counted by how, and the unplaced music ones are sampled in the log', async () => {
+    const db = fakeDb();
+    const logs = [];
+    const none = { geo_lat: null, geo_long: null };
+    const out = await run(base(db, {
+      log: (m) => logs.push(m), fetchYp: async () => '<directory></directory>',
+      search: async () => [
+        rb(1, { ...none, state: 'Tokyo Prefecture' }),
+        rb(2, { ...none, state: '', homepage: 'https://www.radio-osaka.example.jp/', name: 'Kansai Rock' }),
+        rb(3, { ...none, state: 'Somewhere', name: 'Mystery Rock', homepage: 'https://mystery.example.jp', tags: 'rock,classic rock' }),
+        rb(5, { ...none, tags: 'news,talk', name: 'Talk Without A City' }),
+      ],
+    }));
+    const rows = Object.fromEntries([...db.pool.values()].map((r) => [r.name, r]));
+    assert.strictEqual(rows['Station 1'].city, 'Tokyo'); assert.strictEqual(rows['Station 1'].country_code, 'JP');
+    assert.strictEqual(rows['Kansai Rock'].city, 'Osaka');
+    assert(!rows['Mystery Rock'], 'no city, no place on the shelf');
+    assert(out.notes.some((n) => n === 'placed_state=1 placed_homepage=1' || n === 'placed_homepage=1 placed_state=1'), out.notes.join(' / '));
+    assert.strictEqual(out.counts.skip_no_city, 1); // only the music station; the talk station is turned away as not music first
+    assert.strictEqual(out.counts.skip_not_music, 1);
+    assert(logs.some((l) => /still without a city: 1 /.test(l)), logs.join('\n'));
+    assert(logs.some((l) => l.includes('JP | Somewhere | Mystery Rock | https://mystery.example.jp | rock,classic rock')), logs.join('\n'));
+    assert(!logs.some((l) => l.includes('Talk Without A City')));
+  });
   await t('second run: nothing new is added twice; stations are re-checked and gain samples', async () => {
     const plays1 = plays[1];
     plays[1] = 'The Pillows - Another One';

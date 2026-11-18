@@ -32,10 +32,146 @@ function icyBody(metaint, title) {
   console.log('Filters');
   const { cityFromText } = require('../lib/geo');
   const where = (st, n, cc) => (cityFromText(st, n, cc) || {}).city || null;
-  await t('places a station by its listed region', () => { assert.strictEqual(where('Hamburg', 'Synth FM', 'DE'), 'Hamburg'); assert.strictEqual(where('New York', 'Hot 97', 'US'), 'New York City'); });
+  await t('places a station by its listed region', () => { assert.strictEqual(where('Hamburg', 'Synth FM', 'DE'), 'Hamburg'); assert.strictEqual(where('Seattle', 'KEXP', 'US'), 'Seattle'); });
+  await t('a state or province name is not a city (Indiana, New York, São Paulo as regions)', () => {
+    for (const [st, cc] of [['Indiana', 'US'], ['Kansas', 'US'], ['New York', 'US'], ['Washington', 'US'], ['São Paulo', 'BR'], ['Quebec', 'CA'], ['Victoria', 'AU']]) assert.strictEqual(where(st, 'Radio', cc), null, st);
+    assert.strictEqual(where('New York', 'WNYC New York City Jazz', 'US'), 'New York City'); // the name still places it
+  });
   await t('places a station by a big city in its name', () => { assert.strictEqual(where('', 'Radio Kraków Muzyka', 'PL'), 'Kraków'); assert.strictEqual(where('', 'Mexico City Synth', 'MX'), 'Mexico City'); });
   await t('does not place stations from ordinary words or other countries', () => {
     for (const [st, n, cc] of [['', 'Paradise FM', 'US'], ['', 'Love Radio', 'PH'], ['Bavaria', 'Radio Bob', 'DE'], ['', 'Radio Lyon', 'DE'], ['', 'Radio Lyon', '']]) assert.strictEqual(where(st, n, cc), null, n);
+  });
+  // Placing stations without coordinates from every field they have (placeFromFields).
+  const { placeFromFields } = require('../lib/geo');
+  const CITIES = require('../lib/cities.json');
+  const ALIASES = require('../lib/city-aliases');
+  const at = (o) => { const r = placeFromFields(o); return r ? `${r.city}|${r.countryCode}|${r.how}` : null; };
+  await t('region field: administrative words, "City, Region" forms and exact names', () => {
+    assert.strictEqual(at({ state: 'Tokyo Prefecture', countryCode: 'JP' }), 'Tokyo|JP|state');
+    assert.strictEqual(at({ state: 'Tokyo-to', countryCode: 'JP' }), 'Tokyo|JP|state');
+    assert.strictEqual(at({ state: 'Osaka-fu', countryCode: 'JP' }), 'Osaka|JP|state');
+    assert.strictEqual(at({ state: 'Seoul Special City', countryCode: 'KR' }), 'Seoul|KR|state');
+    assert.strictEqual(at({ state: 'City of Vienna', countryCode: 'AT' }), 'Vienna|AT|state');
+    assert.strictEqual(at({ state: 'Greater London', countryCode: 'GB' }), 'London|GB|state');
+    assert.strictEqual(at({ state: 'Metro Manila', countryCode: 'PH' }), 'Manila|PH|state');
+    assert.strictEqual(at({ state: 'Comunidad de Madrid', countryCode: 'ES' }), 'Madrid|ES|state');
+    assert.strictEqual(at({ state: 'Ciudad de México', countryCode: 'MX' }), 'Mexico City|MX|state');
+    assert.strictEqual(at({ state: 'Hamburg, Germany', countryCode: 'DE' }), 'Hamburg|DE|state');
+    assert.strictEqual(at({ state: 'Munich, Bavaria', countryCode: 'DE' }), 'Munich|DE|state');
+    assert.strictEqual(at({ state: 'ÉSTADO DE SÃO PAULO', countryCode: 'BR' }), 'São Paulo|BR|state'); // accents and capitals don't matter
+    assert.strictEqual(at({ state: '東京都', countryCode: 'JP' }), 'Tokyo|JP|state');
+    assert.strictEqual(at({ state: '大阪府', countryCode: 'JP' }), 'Osaka|JP|state');
+  });
+  await t('region field: a region sharing a small town\'s name is not that town', () => {
+    assert.strictEqual(at({ state: 'Texas State', countryCode: 'US' }), null); // not Texas City
+    assert.strictEqual(at({ state: 'Texas', countryCode: 'US' }), null);
+    assert.strictEqual(at({ state: 'Washington State', countryCode: 'US' }), null);
+    assert.strictEqual(at({ state: 'Orange County', countryCode: 'US' }), null); // "orange" is an ordinary word
+    assert.strictEqual(at({ state: 'Bavaria', countryCode: 'DE' }), null);
+    assert.strictEqual(at({ state: 'Japan', countryCode: 'JP' }), null);
+  });
+  await t('name: aliases and other languages', () => {
+    assert.strictEqual(at({ name: 'Radio München Pop', countryCode: 'DE' }), 'Munich|DE|name');
+    assert.strictEqual(at({ name: 'Cologne Beats', countryCode: 'DE' }), 'Köln|DE|name');
+    assert.strictEqual(at({ name: 'NYC Hot Mix', countryCode: 'US' }), 'New York City|US|name');
+    assert.strictEqual(at({ name: 'Joburg Jams', countryCode: 'ZA' }), 'Johannesburg|ZA|name');
+    assert.strictEqual(at({ name: 'Radio Bombay Nights', countryCode: 'IN' }), 'Mumbai|IN|name');
+    assert.strictEqual(at({ name: 'Радио Москва', countryCode: 'RU' }), 'Moscow|RU|name');
+    assert.strictEqual(at({ name: 'Radio Wrocław', countryCode: 'PL' }), 'Wrocław|PL|name'); // ł folds to l on both sides
+    assert.strictEqual(at({ name: 'Łódź FM', countryCode: 'PL' }), 'Łódź|PL|name');
+  });
+  await t('name: Chinese, Japanese and Korean names are found without spaces, and a longer name hides a shorter one', () => {
+    assert.strictEqual(at({ name: '東京FM', countryCode: 'JP' }), 'Tokyo|JP|name');
+    assert.strictEqual(at({ name: '大阪ジャズ', countryCode: 'JP' }), 'Osaka|JP|name');
+    assert.strictEqual(at({ name: '京都ジャズ', countryCode: 'JP' }), 'Kyoto|JP|name');
+    assert.strictEqual(at({ name: '東京都ラジオ', countryCode: 'JP' }), 'Tokyo|JP|name'); // 東京都 contains 京都, but it's Tokyo
+    assert.strictEqual(at({ name: '서울방송', countryCode: 'KR' }), 'Seoul|KR|name');
+    assert.strictEqual(at({ name: '北京音乐台', countryCode: 'CN' }), 'Beijing|CN|name');
+    assert.strictEqual(at({ name: '東京FM', countryCode: 'CN' }), null); // 東京 is only an alias in Japan
+  });
+  await t('tags: a whole tag naming a city of 50,000+', () => {
+    assert.strictEqual(at({ tags: 'jazz,hamburg,smooth', countryCode: 'DE' }), 'Hamburg|DE|tags');
+    assert.strictEqual(at({ tags: 'rock, São Paulo', countryCode: 'BR' }), 'São Paulo|BR|tags');
+    assert.strictEqual(at({ tags: 'Cebu', countryCode: 'PH' }), 'Cebu City|PH|tags');
+    assert.strictEqual(at({ tags: ['pop', 'Venezia'], countryCode: 'IT' }), 'Venice|IT|tags'); // Venice is 51,000: fine for a tag
+    assert.strictEqual(at({ tags: 'hamburg radio,rock', countryCode: 'DE' }), null); // whole tags only
+    assert.strictEqual(at({ tags: 'hamburg', countryCode: 'FR' }), null); // other country
+    assert.strictEqual(at({ tags: 'americana,rock', countryCode: 'BR' }), null); // a genre, though also a Brazilian city
+    assert.strictEqual(at({ tags: 'jazz,soul,pop', countryCode: 'KR' }), null);
+  });
+  await t('homepage and stream addresses: city words, joined names, and generic words peeled off', () => {
+    assert.strictEqual(at({ homepage: 'https://www.radio-buenosaires.com.ar/', countryCode: 'AR' }), 'Buenos Aires|AR|homepage');
+    assert.strictEqual(at({ homepage: 'http://saopaulofm.com.br', countryCode: 'BR' }), 'São Paulo|BR|homepage');
+    assert.strictEqual(at({ homepage: 'https://www.rio-de-janeiro-fm.com.br/ao-vivo', countryCode: 'BR' }), 'Rio de Janeiro|BR|homepage');
+    assert.strictEqual(at({ homepage: 'https://losangelesfm.com', countryCode: 'US' }), 'Los Angeles|US|homepage');
+    assert.strictEqual(at({ homepage: 'https://sanfranciscoradio.net/live', countryCode: 'US' }), 'San Francisco|US|homepage');
+    assert.strictEqual(at({ homepage: 'https://radiohamburg.de', countryCode: 'DE' }), 'Hamburg|DE|homepage');
+    assert.strictEqual(at({ homepage: 'https://www.hamburgfm.de', countryCode: 'DE' }), 'Hamburg|DE|homepage');
+    assert.strictEqual(at({ homepage: 'https://www.dublin-radio.ie', countryCode: 'IE' }), 'Dublin|IE|homepage');
+    assert.strictEqual(at({ homepage: 'https://www.muenchen.example.de', countryCode: 'DE' }), 'Munich|DE|homepage');
+    assert.strictEqual(at({ homepage: 'https://nyc-radio.example.com', countryCode: 'US' }), 'New York City|US|homepage');
+    assert.strictEqual(at({ homepage: 'https://www.radio.example.com/stations/DÜSSELDORF/live', countryCode: 'DE' }), 'Düsseldorf|DE|homepage'); // path words, accents and capitals
+    assert.strictEqual(at({ homepage: 'https://www.bonn-radio.example.de', url: 'https://oslo.example.com/rome/lima', countryCode: 'DE' }), null); // words under 5 letters are too short to trust
+    assert.strictEqual(at({ url: 'https://stream.hamburg.example.de:8000/live', countryCode: 'DE' }), 'Hamburg|DE|stream');
+    assert.strictEqual(at({ url: 'https://s3.radio.co/berlin128/listen', countryCode: 'DE' }), 'Berlin|DE|stream'); // digits split words
+    assert.strictEqual(at({ homepage: 'not a url at all', url: '', countryCode: 'DE' }), null);
+  });
+  await t('priority: state, then name, tags, homepage, stream; the biggest city wins inside one source', () => {
+    const all = { state: 'Cologne', name: 'Radio Hamburg', tags: 'munich', homepage: 'https://berlin.de', url: 'https://x.example.com/dresden', countryCode: 'DE' };
+    assert.strictEqual(at(all), 'Köln|DE|state');
+    assert.strictEqual(at({ ...all, state: '' }), 'Hamburg|DE|name');
+    assert.strictEqual(at({ ...all, state: '', name: 'Synth FM' }), 'Munich|DE|tags');
+    assert.strictEqual(at({ ...all, state: '', name: 'Synth FM', tags: 'pop' }), 'Berlin|DE|homepage');
+    assert.strictEqual(at({ ...all, state: '', name: 'Synth FM', tags: 'pop', homepage: '' }), 'Dresden|DE|stream');
+    assert.strictEqual(at({ name: 'Dresden Hamburg Munich Mix', countryCode: 'DE' }), 'Hamburg|DE|name'); // Hamburg is the biggest of the three
+  });
+  await t('same-country rule: a city in the wrong country, or a small town of that name, never counts', () => {
+    assert.strictEqual(at({ homepage: 'https://paris-music.com', countryCode: 'DE' }), null); // Paris is in France
+    assert.strictEqual(at({ homepage: 'https://www.paris.fr', countryCode: 'FR' }), 'Paris|FR|homepage');
+    assert.strictEqual(at({ homepage: 'https://paris-radio.com', url: 'https://paris.example.com/live', name: 'Radio Paris', tags: 'paris', state: 'Paris', countryCode: 'US' }), 'Paris|US|state'); // only the exact region field may name a small town (Paris, Texas is 25,000)
+    assert.strictEqual(at({ homepage: 'https://paris-radio.com', url: 'https://paris.example.com/live', name: 'Radio Paris', tags: 'paris', countryCode: 'US' }), null);
+    assert.strictEqual(at({ name: 'Radio Lyon', countryCode: 'DE' }), null);
+    assert.strictEqual(at({ name: 'Radio Lyon', countryCode: '' }), null);
+    assert.strictEqual(at({ name: 'Radio Lyon' }), null);
+    assert.strictEqual(at(), null);
+  });
+  await t('generic words and everyday words never place a station', () => {
+    assert.strictEqual(at({ homepage: 'https://radio-paradise.com', countryCode: 'US' }), null);
+    assert.strictEqual(at({ homepage: 'https://nice-fm.fr', url: 'https://nice.example.fr/stream', countryCode: 'FR' }), null); // "nice" is under 5 letters and an everyday word
+    assert.strictEqual(at({ homepage: 'https://www.liveradio.ie', countryCode: 'IE' }), null);
+    assert.strictEqual(at({ homepage: 'https://live-stream-online.example.com/listen/player', countryCode: 'US' }), null);
+    assert.strictEqual(at({ homepage: 'https://www.mobile.example.com', countryCode: 'US' }), null); // Mobile, Alabama
+    assert.strictEqual(at({ homepage: 'https://phoenix.example.com', name: 'Phoenix FM', tags: 'phoenix', countryCode: 'US' }), null);
+    assert.strictEqual(at({ homepage: 'https://latina.example.es', name: 'Latina FM', tags: 'latina', countryCode: 'ES' }), null);
+    assert.strictEqual(at({ homepage: 'https://orange.example.com', name: 'Orange Radio', countryCode: 'US' }), null);
+    assert.strictEqual(at({ name: 'Radio Salem Network', countryCode: 'US' }), null);
+    assert.strictEqual(at({ name: 'Rádio Natal', countryCode: 'BR' }), null); // Christmas, not Natal
+    assert.strictEqual(at({ name: 'Rádio Serra FM', homepage: 'https://radioserra.com.br', countryCode: 'BR' }), null); // mountains
+    assert.strictEqual(at({ name: 'Radio Gracia', countryCode: 'ES' }), null); // grace
+    assert.strictEqual(at({ name: 'Rádio Vitória', countryCode: 'BR' }), null); // victory
+  });
+  await t('aliases: every entry points at a real city in its country, and none is useless or an everyday word', () => {
+    const seen = new Set();
+    for (const [cc, canonical, names] of ALIASES) {
+      const real = CITIES.filter((c) => c[0] === canonical && c[3] === cc);
+      assert(real.length, `${cc} ${canonical} is not in cities.json`);
+      assert(Array.isArray(names) && names.length, `${canonical} has no aliases`);
+      const top = real.reduce((a, b) => (b[4] > a[4] ? b : a));
+      for (const alias of names) {
+        const key = `${cc}|${alias.toLowerCase()}`;
+        assert(!seen.has(key), `${alias} is listed twice for ${cc}`); seen.add(key);
+        // The alias, written as the region field, finds that city (this also catches aliases that are NOT_PLACES words).
+        // (State and province names in federal countries are skipped on purpose: "New York" as a region isn't the city.)
+        const got = placeFromFields({ state: alias, countryCode: cc });
+        if (got || !require('../lib/geo').isRegionName(alias, cc)) assert(got && got.city === canonical && got.countryCode === cc, `${alias} (${cc}) -> ${got && got.city}, wanted ${canonical}`);
+        // A city of 100,000+ is also found by its alias inside a name.
+        if (top[4] >= 100000 && alias.replace(/\W/gu, '').length >= 4 || (top[4] >= 100000 && /[぀-ヿ㐀-鿿가-힯฀-๿]/.test(alias))) {
+          const byName = placeFromFields({ name: `Radio ${alias} FM`, countryCode: cc });
+          assert(byName && byName.city === canonical, `${alias} (${cc}) in a name -> ${byName && byName.city}, wanted ${canonical}`);
+        }
+      }
+    }
+    assert(ALIASES.length >= 200, `only ${ALIASES.length} entries`);
   });
   const { translateTags } = require('../lib/translate');
   const tr = (x) => translateTags(splitTags(x));
