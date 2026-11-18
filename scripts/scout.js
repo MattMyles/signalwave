@@ -72,6 +72,7 @@ function defaults() {
     fetchYp: async () => {
       const r = await fetch('https://dir.xiph.org/yp.xml', { headers: { 'User-Agent': cfg.USER_AGENT }, signal: AbortSignal.timeout(60000) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      console.log(`Icecast directory: HTTP ${r.status}, ${r.headers.get('content-type') || 'no content type'}, from ${r.url}`);
       return r.text();
     },
     probe: probeStream,
@@ -210,6 +211,10 @@ async function run(overrides = {}) {
     try {
       const xml = await D.fetchYp();
       const entries = shelf.parseYp(xml);
+      if (!entries.length) {
+        // Show what the directory sent, so a format change can be fixed.
+        log(`Icecast directory sent ${String(xml || '').length} characters but no entries. Start: ${JSON.stringify(String(xml || '').slice(0, 400))}`);
+      }
       log(`Icecast directory: ${entries.length} entries${entries.length >= 1000 && entries.length % 1000 === 0 ? ' (a round number: the directory may be capped)' : ''}.`);
       notes.push(`icecast_entries=${entries.length}`);
       const fresh = [];
