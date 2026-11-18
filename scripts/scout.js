@@ -2,7 +2,7 @@
 // The station scout: fills and tends the shelf (Supabase station_pool) that
 // /api/next draws from, so listeners get a vetted station straight away
 // instead of waiting for a live search. Run by .github/workflows/scout.yml
-// every 30 minutes, or by hand: `node scripts/scout.js`.
+// twice an hour (:17 and :47), or by hand: `node scripts/scout.js`.
 //
 // Each run:
 //   1. DISCOVER  new stations from Radio Browser's WHOLE list of working
@@ -33,8 +33,11 @@ const { translateTags } = require('../lib/translate');
 const { nativeWords } = require('../lib/genre-words');
 const vet = require('../lib/vet');
 const songs = require('../lib/songcheck');
-const { artistCountry } = require('../lib/artistcheck');
+const { artistCountry, artistInfo } = require('../lib/artistcheck');
+const { artistKey } = require('../lib/mbtags');
+const { makeArtistCache } = require('../lib/artistcache'); // the artist_info cache: country and MusicBrainz genres
 const shelf = require('../lib/shelf');
+const { searchTerms } = require('../lib/tagmatch');
 const scoutlist = require('../lib/scoutlist');
 const { makeSongCache } = require('../lib/songcache'); // the song_lookups cache, shared with the live paths
 
@@ -101,6 +104,7 @@ function defaults() {
     probe: probeStream,
     songInfo: songs.songInfo,
     artistCountry,
+    artistInfo, // { country, tags } from MusicBrainz in one request (a test that injects only artistCountry gets country alone)
     sleep,
     sliceIndex: () => (process.env.SCOUT_SLICE != null && process.env.SCOUT_SLICE !== '' ? Number(process.env.SCOUT_SLICE) : Math.floor(Date.now() / (30 * 60000))),
   };
@@ -108,6 +112,7 @@ function defaults() {
 
 async function run(overrides = {}) {
   const D = { ...defaults(), ...DEFAULTS, ...overrides };
+  if (overrides.artistCountry && !overrides.artistInfo) D.artistInfo = null;
   const { db, log } = D;
   const t0 = D.now();
   const budgetEnd = t0 + D.budgetMs;
@@ -165,7 +170,7 @@ async function run(overrides = {}) {
     const keyJobs = [];
     for (const key of keys) {
       const spec = shelf.SPECS.get(key);
-      for (const tag of [...new Set(spec.tags)].slice(0, 5)) keyJobs.push({ tag, limit: 200 });
+      for (const tag of searchTerms(spec.tags).slice(0, 5)) keyJobs.push({ tag, limit: 200 }); // a compound name is searched by its first term
     }
     const wideJobs = [];
     const countryJobs = []; // per country: the whole country, then each main genre (English and native word)
@@ -219,7 +224,8 @@ async function run(overrides = {}) {
         }
         continue;
       }
-      const { url, nu, rawTags, place } = r.cand;
+      const { url, nu, rawTags, place, untagged } = r.cand;
+      if (untagged) bump('untagged_candidates');
       const cc = (s.countrycode || place.countryCode || '').toUpperCase();
       pool.push({
         cc, nu, place,
@@ -229,6 +235,7 @@ async function run(overrides = {}) {
           rawTags, country: s.country || countryName(cc || place.countryCode) || 'Unknown',
           country_code: cc || null,
           city: place.city || null, region: place.city ? null : (place.region || null), lat: place.lat, lng: place.lng, codec: s.codec || null, bitrate: Number(s.bitrate) || null,
+          untagged: Boolean(untagged), // not a column: only for the run's counts
         },
       });
     }
@@ -315,6 +322,9 @@ async function run(overrides = {}) {
 
     /* ---------- 3. Check, judge, save ---------- */
     const songCache = makeSongCache(db, D.now);
+    const artistCache = makeArtistCache(db, D.now);
+    // One MusicBrainz question per artist: { country, tags }. Artists already on file (artist_info) cost no request.
+    const getArtist = D.artistInfo ? (a, o) => D.artistInfo(a, o) : async (a) => ({ country: await D.artistCountry(a), tags: [] });
     const itunesGate = (() => {
       let next = 0;
       return async () => {
@@ -347,7 +357,7 @@ async function run(overrides = {}) {
       return item;
     }
 
-    // Looks songs up (iTunes) and artists' countries (MusicBrainz) for a chunk.
+    // Looks songs up (iTunes) and artists' countries and genres (MusicBrainz) for a chunk.
     async function lookups(items) {
       const withSong = items.filter((i) => i.result === 'ok');
       const keysWanted = withSong.map((i) => { const sp = songs.splitSong(i.title); return sp ? songs.songKey(sp.artist, sp.song) : null; });
@@ -359,31 +369,42 @@ async function run(overrides = {}) {
       const itunes = (async () => {
         for (const item of order) {
           try {
-            const r = await D.songInfo(item.title, { cache: songCache, gate });
+            // Titles in other scripts are looked up in the station's own country's store.
+            const r = await D.songInfo(item.title, { cache: songCache, gate, country: item.row.country_code });
             item.known = r.known;
-            item.fits = r.known ? songs.fitKeys(r.info) : [];
-          } catch (_) { item.known = false; item.fits = []; }
+            item.info = r.known ? r.info : null;
+          } catch (_) { item.known = false; item.info = null; }
         }
       })();
-      // Artist countries: the new song first, then up to two older samples that were never looked up.
+      // Artist countries and genres: the new song first, then up to two older samples that were never looked up.
       const wanted = [];
       for (const item of withSong) wanted.push({ item, title: item.title, fresh: true });
       for (const item of withSong) {
         for (const s of [...(item.row.samples || [])].reverse().filter((s) => s.cc === undefined).slice(0, 2)) wanted.push({ item, sample: s, title: s.title });
       }
+      if (D.artistInfo) await artistCache.prefetch(wanted.map((w) => { const sp = songs.splitSong(w.title); return sp ? artistKey(sp.artist) : null; }));
       const mb = (async () => {
         let n = 0;
         for (const w of wanted) {
           if (n >= D.mbPerChunk || used.mb >= D.mbMax || stopped()) break;
           const sp = songs.splitSong(w.title);
           if (!sp || !w.item.row.country_code) continue;
-          n++; used.mb++;
-          let cc = null;
-          try { cc = await D.artistCountry(sp.artist); } catch (_) { /* unknown */ }
-          if (w.fresh) w.item.cc = cc || null; else w.sample.cc = cc || null;
+          let info = D.artistInfo ? artistCache.get(artistKey(sp.artist)) : undefined; // on file: no request
+          if (info === undefined) {
+            n++; used.mb++;
+            try { info = await getArtist(sp.artist, { cache: artistCache }); } catch (_) { info = null; }
+          }
+          const cc = info ? info.country : null;
+          if (w.fresh) { w.item.cc = cc || null; w.item.mb = (info && info.tags) || []; } else w.sample.cc = cc || null;
         }
       })();
       await Promise.all([itunes, mb]);
+      // Which genres each new song fits, now that Apple's labels and MusicBrainz's genres are both in.
+      for (const item of withSong) {
+        const info = item.info ? { ...item.info, mb: item.mb } : null;
+        item.fits = item.known ? songs.fitKeys(info) : [];
+        item.named = item.known ? songs.namedKeys(info) : [];
+      }
     }
 
     // Turns a probed item into the row to save (or null for "nothing to save").
@@ -392,7 +413,7 @@ async function run(overrides = {}) {
       const row = item.row;
       if (item.isNew) {
         if (item.result === 'ok') {
-          row.samples = shelf.addSample([], { title: item.title, at: now, known: Boolean(item.known), fits: item.fits || [], ...(item.cc !== undefined ? { cc: item.cc } : {}) });
+          row.samples = shelf.addSample([], { title: item.title, at: now, known: Boolean(item.known), fits: item.fits || [], named: item.named || [], ...(item.cc !== undefined ? { cc: item.cc } : {}) });
           row.cors = item.p.cors; row.bitrate = item.p.bitrate || row.bitrate;
           row.ok_count = 1; row.fail_streak = 0; row.status = 'active'; row.last_ok_at = now; row.last_checked_at = now;
         } else if (item.definite) {
@@ -400,7 +421,7 @@ async function run(overrides = {}) {
         } else return null; // slow or flaky: may be fine next time, forget it
       } else if (item.result === 'ok') {
         const wasDead = row.status === 'dead';
-        row.samples = shelf.addSample(row.samples, { title: item.title, at: now, known: Boolean(item.known), fits: item.fits || [], ...(item.cc !== undefined ? { cc: item.cc } : {}) });
+        row.samples = shelf.addSample(row.samples, { title: item.title, at: now, known: Boolean(item.known), fits: item.fits || [], named: item.named || [], ...(item.cc !== undefined ? { cc: item.cc } : {}) });
         row.cors = item.p.cors; row.bitrate = item.p.bitrate || row.bitrate;
         row.ok_count = (row.ok_count || 0) + 1; row.fail_streak = 0; row.status = 'active'; row.last_ok_at = now; row.last_checked_at = now;
         if (wasDead) bump('revived');
@@ -467,9 +488,10 @@ async function run(overrides = {}) {
             const refused = await save(prepared.map((x) => x.row));
             for (const it of probed) if (it.isNew) covered.add(it.row.country_code || '??');
             for (const { it, row } of prepared) {
-              if (it.isNew && row.status === 'active' && !refused.has(row.uuid)) { stats.added++; const r = regionOf(row.country_code); addedBy[r] = (addedBy[r] || 0) + 1; }
+              if (it.isNew && row.status === 'active' && !refused.has(row.uuid)) { stats.added++; const r = regionOf(row.country_code); addedBy[r] = (addedBy[r] || 0) + 1; if (it.row.untagged) bump('untagged_added'); }
             }
             await songCache.flush();
+            await artistCache.flush();
           } catch (e) { note(`chunk error: ${e.message}`); }
         })();
       }
@@ -488,6 +510,7 @@ async function run(overrides = {}) {
     await pipeline(oldItems, stopAt);
 
     note(`checked ${stats.checked} (${newItems.length} new candidates, ${oldItems.length} due for re-check); added ${stats.added}, now dead ${stats.now_dead}; iTunes lookups ${used.itunes}, MusicBrainz ${used.mb}`);
+    if (counts.untagged_candidates || counts.untagged_added) note(`untagged_added=${counts.untagged_added || 0} of ${counts.untagged_candidates || 0} untagged candidates (genres from songs only)`);
     note(`countries probed ${covered.size}; added by region: ${Object.entries(addedBy).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}=${v}`).join(' ') || 'none'}`);
     const skipped = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}=${v}`).join(' ');
     if (skipped) note(skipped);

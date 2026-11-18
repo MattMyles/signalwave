@@ -1,5 +1,8 @@
 // POST /api/feedback — a listener tapped "WRONG GENRE?" on a station.
-// Body: { visitor, genres: ['rock', 'tag:classic rock'], song, station: { uuid, name, city, countryCode, genre } }
+// Body: { visitor, genres: ['rock', 'tag:classic rock'], song, station: { uuid, name, city, countryCode, genre }, suggested? }
+// `suggested` is the genre the listener said the song really is, chosen from the app's list
+// (a genre key such as 'tag:dancehall' or 'reggae'); it is checked against the keys the app knows
+// and stored with each row (genre_reports.suggested). Left out when they skipped.
 // Saves one row per picked genre in genre_reports (server-only key), waiting
 // for review in the admin dashboard; once the admin agrees, the server stops
 // serving that station for those genres (lib/reports.js). Everyone's reports
@@ -11,6 +14,8 @@ const { serviceEnv, sbHeaders, verifyUser } = require('../lib/supabase-env');
 const { sendJson, readJson, bearer } = require('../lib/http');
 const { forget } = require('../lib/reports');
 const { crossedLine, sendReviewAlert } = require('../lib/notify');
+const { ALL_KEYS } = require('../lib/songcheck');
+const KNOWN_KEYS = new Set(ALL_KEYS);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const GENRE_ID = /^(tag:)?[a-z0-9 &'\-]{2,40}$/;
@@ -58,6 +63,8 @@ module.exports = async function handler(req, res) {
   if (recent.size > 5000) recent.clear();
 
   const user = await verifyUser(bearer(req));
+  // Only a genre the app lists can be suggested (no free text); anything else is ignored.
+  const suggested = typeof (body && body.suggested) === 'string' && KNOWN_KEYS.has(body.suggested) ? body.suggested : null;
   const rows = genres.map((g) => ({
     station_uuid: st.uuid.toLowerCase(),
     station_name: text(st.name, 200),
@@ -70,14 +77,19 @@ module.exports = async function handler(req, res) {
     user_id: user ? user.id : null,
     status: 'pending',
     reviewed_at: null,
+    ...(suggested ? { suggested } : {}), // (the key is left out when there is none, so it works before the column exists)
   }));
+  const insert = (list) => fetch(`${env.url}/rest/v1/genre_reports`, {
+    method: 'POST',
+    headers: { ...sbHeaders(env.key), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(list),
+    signal: AbortSignal.timeout(6000),
+  });
   try {
-    const r = await fetch(`${env.url}/rest/v1/genre_reports`, {
-      method: 'POST',
-      headers: { ...sbHeaders(env.key), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify(rows),
-      signal: AbortSignal.timeout(6000),
-    });
+    let r = await insert(rows);
+    // The suggested column comes from migration 20261118100000_genre_judging.sql; without it the
+    // report is still worth having, so try again without the suggestion.
+    if (!r.ok && suggested) r = await insert(rows.map(({ suggested: _s, ...rest }) => rest));
     if (!r.ok) return sendJson(res, 502, { error: 'Could not save the report.' });
     forget(); // this server instance picks the report up straight away
     await alertIfPilingUp(env, rows.length, req);

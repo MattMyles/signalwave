@@ -54,7 +54,7 @@ around the two handlers.
 | `lib/pool.js` | Serves a station from the shelf (see "Station shelf") |
 | `lib/shelf.js` | Shelf logic: Icecast directory parsing, stream addresses, genre qualification |
 | `scripts/scout.js` | The scout that stocks and tends the shelf (run by GitHub Actions) |
-| `.github/workflows/scout.yml` | Runs the scout every 30 minutes |
+| `.github/workflows/scout.yml` | Runs the scout twice an hour (at :17 and :47) |
 | `lib/geo.js` | Offline city lookup from `lib/cities.json` (no outside service) |
 | `api/config.js` | Tells the app whether sync is set up (reads Vercel env vars) |
 | `api/keepalive.js` | Daily ping that stops the free Supabase project pausing |
@@ -124,14 +124,17 @@ Set it up once:
 1. **Run the migration.** `supabase/migrations/20261118040000_station_pool.sql`
    (automatic with the GitHub integration, or paste it into the SQL Editor). It
    creates `station_pool`, `song_lookups`, `scout_runs` and the functions the
-   server uses. The shelf also needs `SUPABASE_SERVICE_ROLE_KEY` in Vercel (already
+   server uses. Build 57 adds `supabase/migrations/20261118100000_genre_judging.sql`
+   (MusicBrainz artist cache, the reclassify suggestion column and the untagged-station
+   rule); the app works without it but the new checks and "verified" counts need it.
+   The shelf also needs `SUPABASE_SERVICE_ROLE_KEY` in Vercel (already
    set if the dashboard works).
 2. **Add two GitHub repository secrets** (repo → Settings → Secrets and variables →
    Actions → New repository secret): `SUPABASE_URL` (the same project address as in
    Vercel) and `SUPABASE_SERVICE_ROLE_KEY` (the same secret key as in Vercel). If
    they're missing the scout just prints a message and does nothing.
 3. **Run the scout once by hand:** Actions → **Station scout** → Run workflow. After
-   that it runs by itself every 30 minutes (each run is about 20 minutes).
+   that it runs by itself twice an hour (at :17 and :47) (each run is about 20 minutes).
 4. **Watch it fill up** in the dashboard's **STATION SHELF** panel (stations ready
    to play per genre, and the last scout run).
 

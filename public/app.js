@@ -81,7 +81,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '56';
+  const BUILD = '57';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -2023,8 +2023,9 @@
     }
     syncCatalog();
   }
-  // Candidate stations per genre and style, from the directory (cached a day on
-  // the server). An upper bound: some fail the live checks.
+  // Station counts per genre and style. Main figure: stations checked and ready to
+  // play (the scout's shelf, `verified`). Small and dim: "possible", what the directory
+  // lists (an upper bound: some fail the live checks). Without the shelf only "possible" shows.
   const genreCounts = new Map();
   async function loadGenreCounts(genre) {
     if (!genreCounts.has(genre)) {
@@ -2036,9 +2037,16 @@
     for (const [id, c] of Object.entries(j.counts)) {
       const el = document.querySelector(`#genreCatalog [data-n="${CSS.escape(id)}"]`);
       if (!el) continue;
-      el.textContent = c.more ? `${c.n}+` : String(c.n);
-      el.title = `${el.textContent} stations listed with a place and secure stream`;
-      el.closest('.sub').classList.toggle('empty', c.n === 0);
+      const possible = c.more ? `${c.n}+` : String(c.n);
+      const hasShelf = Number.isFinite(c.verified);
+      el.innerHTML = hasShelf
+        ? `<b class="vn">${c.verified}</b><span class="pn">${esc(possible)} possible</span>`
+        : `<span class="pn">${esc(possible)} possible</span>`;
+      el.dataset.say = hasShelf ? `${c.verified} ready to play, ${possible} possible` : `${possible} possible`;
+      el.title = hasShelf
+        ? `${c.verified} checked and ready to play; ${possible} listed in the directory (some won't pass the live checks)`
+        : `${possible} listed in the directory with a place and secure stream (some won't pass the live checks)`;
+      el.closest('.sub').classList.toggle('empty', hasShelf ? c.verified === 0 : c.n === 0); // still selectable: the scout may find some
     }
   }
   function syncCatalog() {
@@ -2046,7 +2054,7 @@
       const on = state.genres.includes(b.dataset.id);
       b.setAttribute('aria-pressed', String(on));
       const n = b.querySelector('.sub-n');
-      b.setAttribute('aria-label', `${on ? 'Remove' : 'Add'} ${b.dataset.label}${n && n.textContent ? `, ${n.textContent} stations` : ''}`);
+      b.setAttribute('aria-label', `${on ? 'Remove' : 'Add'} ${b.dataset.label}${n && n.dataset.say ? `, ${n.dataset.say} stations` : ''}`);
     });
     for (const main of CATALOG) {
       const n = [main.id, ...main.subs.map((t) => `tag:${t}`)].filter((id) => state.genres.includes(id)).length;
@@ -2243,23 +2251,10 @@
   });
   // Wrong genre: skip now, add a strike for each picked genre (10 block the
   // station for that genre, for this listener) and report it to /admin. One tap
-  // doesn't mean the station is wrong: many mix genres.
-  $('flagGenre').addEventListener('click', async () => {
-    const s = state.current;
-    if (!s || s.egg || !state.selected.length) return;
-    const report = {
-      visitor: visitorId(),
-      genres: [...state.selected],
-      song: state.title || null,
-      station: { uuid: s.uuid, name: s.name, city: s.city, countryCode: s.countryCode, genre: s.genre },
-    };
-    const blocked = addStrikes(s.uuid, state.selected);
-    if (blocked.length) {
-      const label = blocked.map((g) => genreLabel(g).toUpperCase()).join(' + ');
-      markChanged(); // the block syncs with the account
-      toast(`> SIGNAL BLOCKED FOR ${label}`);
-      next(`> SIGNAL BLOCKED FOR ${label} — RETUNING…`);
-    } else next('> WRONG GENRE REPORTED — RETUNING…');
+  // doesn't mean the station is wrong: many mix genres. The retune is instant;
+  // the report waits a moment while a small sheet asks what the song really was
+  // (a genre from the list, optional), then goes out once, with or without it.
+  async function sendReport(report) {
     const headers = { 'Content-Type': 'application/json' };
     try {
       if (sb && user) {
@@ -2268,7 +2263,100 @@
       }
       await fetch('/api/feedback', { method: 'POST', headers, keepalive: true, body: JSON.stringify(report) });
     } catch (_) { /* best-effort: the skip already happened */ }
+  }
+  $('flagGenre').addEventListener('click', () => {
+    const s = state.current;
+    if (!s || s.egg || !state.selected.length) return;
+    // What was playing, captured now: by the time they answer, another station is on.
+    const report = {
+      visitor: visitorId(),
+      genres: [...state.selected],
+      song: state.title || null,
+      station: { uuid: s.uuid, name: s.name, city: s.city, countryCode: s.countryCode, genre: s.genre },
+    };
+    reclass.close(); // an earlier report still waiting for a genre goes out as it is
+    reclass.open(report); // first, so the keyboard comes up inside the tap
+    const blocked = addStrikes(s.uuid, state.selected);
+    if (blocked.length) {
+      const label = blocked.map((g) => genreLabel(g).toUpperCase()).join(' + ');
+      markChanged(); // the block syncs with the account
+      toast(`> SIGNAL BLOCKED FOR ${label}`);
+      next(`> SIGNAL BLOCKED FOR ${label} — RETUNING…`);
+    } else next('> WRONG GENRE REPORTED — RETUNING…');
   });
+
+  /* ---------- Reclassify sheet ----------
+     After WRONG GENRE?: type what the song really was and pick it from the list (every main
+     genre and style; the matching is in suggest.js). Not modal, so the player stays usable.
+     The report is sent exactly once: with the chosen genre key as `suggested`, or without it
+     on SKIP, Esc, after 30 s without typing, or when the app goes to the background. */
+  const reclass = (() => {
+    const IDLE_MS = 30000;
+    const box = $('reclass'), input = $('reclassInput'), list = $('reclassList'), none = $('reclassNone');
+    const entries = window.GenreSuggest
+      ? GenreSuggest.buildEntries(CATALOG, genreLabel, window.GENRE_NAMES || {})
+      : [];
+    let pending = null, timer = 0, shown = [], active = 0;
+    const restartTimer = () => { clearTimeout(timer); timer = setTimeout(() => close(), IDLE_MS); };
+    function render() {
+      shown = window.GenreSuggest ? GenreSuggest.suggest(input.value, entries, 8) : [];
+      active = 0;
+      list.innerHTML = '';
+      shown.forEach((m, i) => {
+        const li = document.createElement('li');
+        li.setAttribute('role', 'option');
+        li.id = `rc-${i}`;
+        li.setAttribute('aria-selected', String(i === active));
+        li.innerHTML = `<span>${esc(m.label)}</span>${m.parent ? `<span class="rc-parent">· ${esc(m.parent)}</span>` : ''}${m.via ? `<span class="rc-via">${esc(m.via)}</span>` : ''}`;
+        // pointerdown + preventDefault keeps the keyboard up and picks on the first tap.
+        li.addEventListener('pointerdown', (e) => { e.preventDefault(); choose(m); });
+        list.appendChild(li);
+      });
+      none.hidden = !(input.value.trim() && !shown.length);
+      input.setAttribute('aria-expanded', String(shown.length > 0));
+      if (shown.length) input.setAttribute('aria-activedescendant', 'rc-0'); else input.removeAttribute('aria-activedescendant');
+    }
+    function move(d) {
+      if (!shown.length) return;
+      active = (active + d + shown.length) % shown.length;
+      [...list.children].forEach((li, i) => li.setAttribute('aria-selected', String(i === active)));
+      input.setAttribute('aria-activedescendant', `rc-${active}`);
+      list.children[active].scrollIntoView({ block: 'nearest' });
+    }
+    function finish(suggested) {
+      const report = pending;
+      pending = null;
+      clearTimeout(timer);
+      box.hidden = true;
+      input.blur();
+      if (report) sendReport(suggested ? { ...report, suggested } : report);
+    }
+    function choose(m) {
+      toast(`> SIGNAL RECLASSIFIED: ${m.label.toUpperCase()} // SENT TO NESE`);
+      finish(m.id);
+    }
+    function open(report) {
+      pending = report;
+      input.value = '';
+      render();
+      box.hidden = false;
+      input.focus();
+      restartTimer();
+    }
+    function close() { finish(null); }
+    input.addEventListener('input', () => { render(); restartTimer(); });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (shown[active]) choose(shown[active]); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(); }
+      else restartTimer();
+    });
+    $('reclassSkip').addEventListener('click', close);
+    // Leaving the app: don't lose the report.
+    document.addEventListener('visibilitychange', () => { if (document.hidden && pending) close(); });
+    return { open, close };
+  })();
   document.addEventListener('keydown', (e) => {
     if (e.target.closest('input, textarea')) return;
     if (e.key === 'n' || e.key === 'ArrowRight') next();

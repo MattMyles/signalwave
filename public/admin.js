@@ -109,6 +109,21 @@
     const t = String(id || '').replace(/^tag:/, '');
     return t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
+  // What listeners said the song really was, per station: "Dancehall ×3 · Reggae ×1". A report
+  // saves one row per picked genre, all with the same time, so rows count once per report.
+  function listenersSay(list, uuid) {
+    const seen = new Set();
+    const n = {};
+    for (const x of list) {
+      if (x.station_uuid !== uuid || !x.suggested) continue;
+      const k = `${x.suggested}|${x.created_at}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      n[x.suggested] = (n[x.suggested] || 0) + 1;
+    }
+    return Object.entries(n).sort((a, b) => b[1] - a[1]).map(([k, c]) => ({ key: k, name: genreName(k), n: c }));
+  }
+  const sayText = (say, sep) => say.map((s) => `${s.name} ×${s.n}`).join(sep);
   const VERDICT = { pending: 'TO REVIEW', approved: 'AGREED · DROPPED', rejected: 'DISMISSED' };
   function renderReports(list) {
     const box = $('reports');
@@ -127,7 +142,8 @@
         <td class="mono" style="white-space:nowrap;color:var(--dim)">${ago(x.created_at)}</td>
         <td><a href="/?station=${encodeURIComponent(x.station_uuid)}" target="_blank" rel="noopener" title="Open in the app to listen">${esc(x.station_name || 'Unnamed station')}</a><br>
           <span style="color:var(--dim)">${flag(x.country_code)} ${esc(x.city || '')}${x.station_genre ? ` · tagged ${esc(x.station_genre)}` : ''}</span>
-          <button class="linkbtn" type="button" data-history="${esc(x.station_uuid)}" title="The last songs this station played">SONGS</button></td>
+          <button class="linkbtn" type="button" data-history="${esc(x.station_uuid)}" title="The last songs this station played">SONGS</button>
+          ${(() => { const say = listenersSay(list, x.station_uuid); return say.length ? `<br><span class="mono" style="color:var(--yellow);font-size:11px">LISTENERS SAY: ${esc(sayText(say, ' · '))}</span>` : ''; })()}</td>
         <td>${esc(genreName(x.genre_key))}</td>
         <td>${esc(x.song || '—')}</td>
         <td style="white-space:nowrap">${x.status === 'pending'
@@ -148,7 +164,7 @@
     const agreed = list.filter((x) => x.status === 'approved');
     return [
       `NEO // EARTH: ${agreed.length} wrong-genre report${agreed.length === 1 ? '' : 's'} I agreed with. Please tune the genre rules so stations like these aren't picked for these genres.`,
-      ...agreed.map((x) => `- Picked: ${genreName(x.genre_key)} (${x.genre_key}) | Station: ${x.station_name || 'Unnamed'} (${[x.city, x.country_code].filter(Boolean).join(', ')}) | matched tag: ${x.station_genre || '?'} | song: ${x.song || '?'} | uuid: ${x.station_uuid} | ${String(x.created_at).slice(0, 10)}`),
+      ...agreed.map((x) => `- Picked: ${genreName(x.genre_key)} (${x.genre_key}) | Station: ${x.station_name || 'Unnamed'} (${[x.city, x.country_code].filter(Boolean).join(', ')}) | matched tag: ${x.station_genre || '?'} | song: ${x.song || '?'} |${(() => { const say = listenersSay(list, x.station_uuid); return say.length ? ` listeners say it is: ${sayText(say, ', ').replace(/×/g, 'x')} |` : ''; })()} uuid: ${x.station_uuid} | ${String(x.created_at).slice(0, 10)}`),
     ].join('\n');
   }
   // A station's recent songs (up to 10, newest first): where each came from, Apple's

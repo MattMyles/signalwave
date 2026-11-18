@@ -54,11 +54,23 @@ async function stationHistory(env, uuid, genreKeys) {
   const gate = async () => left-- > 0;
   const out = await Promise.all(merged.map(async (m) => {
     let info = null;
-    try { info = (await songs.songInfo(m.title, { cache, gate })).info; } catch (_) { /* unknown */ }
+    try { info = (await songs.songInfo(m.title, { cache, gate, country: row && row.country_code })).info; } catch (_) { /* unknown */ }
     return { ...m, genres: info ? info.genres : [], year: info ? info.year : null, fit: parts.length ? songs.fitOf(parts, info) : null };
   }));
   await cache.flush();
   return { uuid, name: row ? row.name : null, songs: out, server: Boolean(server.length) };
+}
+
+// The wrong-genre reports, with what listeners said the genre really was (the `suggested` column,
+// from migration 20261118100000_genre_judging.sql); without that column, the same list without it.
+async function reportsFetch(env) {
+  const cols = 'id,station_uuid,station_name,genre_key,station_genre,song,city,country_code,status,created_at';
+  const get = (select) => fetch(`${env.url}/rest/v1/genre_reports?select=${select}&order=created_at.desc&limit=150`, { headers: sbHeaders(env.key), signal: AbortSignal.timeout(10000) });
+  try {
+    const r = await get(`${cols},suggested`);
+    if (r.ok) return r;
+    return await get(cols);
+  } catch (_) { return null; }
 }
 
 module.exports = async function handler(req, res) {
@@ -111,9 +123,7 @@ module.exports = async function handler(req, res) {
       rpc('admin_stats', { tz }),
       rpc('admin_check_stats', {}).catch(() => null),
       directoryStats(),
-      fetch(`${env.url}/rest/v1/genre_reports?select=id,station_uuid,station_name,genre_key,station_genre,song,city,country_code,status,created_at&order=created_at.desc&limit=150`, {
-        headers: sbHeaders(env.key), signal: AbortSignal.timeout(10000),
-      }).catch(() => null),
+      reportsFetch(env),
       // The station shelf (lib/pool.js): servable counts per genre, and the scout's latest run.
       rpc('pool_stats', {}).catch(() => null),
       fetch(`${env.url}/rest/v1/scout_runs?select=id,started_at,finished_at,discovered,checked,added,now_dead,active_total,notes&order=started_at.desc&limit=1`, {

@@ -16,7 +16,7 @@ async function sendShelfStation(res, row) {
   if (!/^https:\/\//.test(row.url)) return sendJson(res, 422, { error: "That station's stream isn't secure (HTTPS), so it can't play here." });
   const p = await probeStream(row.url);
   const tags = splitTags(row.tags);
-  rememberStream(row.uuid, row.url);
+  rememberStream(row.uuid, row.url, row.country_code);
   sendJson(res, 200, {
     station: {
       uuid: row.uuid,
@@ -73,7 +73,7 @@ module.exports = async function handler(req, res) {
 
   const p = await probeStream(s.url_resolved);
   const tags = splitTags(s.tags);
-  rememberStream(s.stationuuid, s.url_resolved);
+  rememberStream(s.stationuuid, s.url_resolved, s.countrycode);
   sendJson(res, 200, {
     station: {
       uuid: s.stationuuid,

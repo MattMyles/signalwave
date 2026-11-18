@@ -152,8 +152,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const r = await songs.songInfo('Persisted Band - Persisted Song', { cache, gate: async () => { throw new Error('should not ask'); } });
       assert.strictEqual(r.known, true); assert.strictEqual(requests, 1);
     });
-    await t('songs with no Latin letters are not looked up', async () => {
-      const r = await songs.songInfo('米津玄師 - レモン', { cache, gate: async () => true });
+    await t('songs in other scripts are looked up too (see scripts/test-genres.js), but a title with nothing to match on is not', async () => {
+      const r = await songs.songInfo('!!! - ???', { cache, gate: async () => true });
       assert.strictEqual(r.known, false); assert.strictEqual(requests, 1);
     });
     global.fetch = realFetch;
@@ -1129,6 +1129,44 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       songInfo: async (title, opts) => { if (await opts.gate()) itunes++; return { info: null, known: false }; }, artistCountry: async () => { mb++; return 'JP'; } });
     assert(itunes <= 5, `itunes ${itunes}`); assert(mb <= 7, `mb ${mb}`);
     assert([...db.pool.values()].filter((r) => r.status === 'active').length === 40);
+  });
+  await t('untagged stations are probed, counted apart (untagged_added), saved without tags, and get genres only from songs', async () => {
+    const db = fakeDb();
+    const untagged = (n, over = {}) => rb(n, { tags: '', countrycode: 'IN', country: 'India', geo_lat: '19.07', geo_long: '72.87', ...over });
+    const out = await run(base(db, {
+      fetchYp: async () => '<directory></directory>',
+      search: async () => [untagged(1, { name: 'Radio Mirchi' }), untagged(2, { name: 'Akashvani News' }), rb(3)],
+      probe: async (u) => ({ ok: true, bitrate: 128, cors: false, title: u.includes('s1.') ? 'Led Zeppelin - Kashmir' : 'Some Band - Some Song' }),
+    }));
+    const rows = Object.fromEntries([...db.pool.values()].map((r) => [r.name, r]));
+    assert(rows['Radio Mirchi'] && rows['Radio Mirchi'].status === 'active'); assert.strictEqual(rows['Radio Mirchi'].tags, ''); assert.strictEqual(rows['Radio Mirchi'].country_code, 'IN');
+    assert.deepStrictEqual(rows['Radio Mirchi'].genres, []); // one song is no basis for a genre
+    assert(!rows['Akashvani News']); assert.strictEqual(out.counts.untagged_candidates, 1); assert.strictEqual(out.counts.untagged_added, 1);
+    assert(out.notes.some((n) => /untagged_added=1 of 1 untagged candidates/.test(n)), out.notes.join(' / '));
+    // Run again with samples that identify it as rock three times: now it qualifies, with no tags at all.
+    const known = { title: 'Led Zeppelin - Kashmir', at: 'x', known: true, fits: ['rock', 'tag:classic rock'], named: [] };
+    db.pool.get(rows['Radio Mirchi'].uuid).samples = [known, { ...known, title: 'Led Zeppelin - Ramble On' }, { ...known, title: 'Led Zeppelin - Black Dog' }];
+    await run(base(db, { fetchYp: async () => '<directory></directory>', search: async () => [], probe: async () => ({ ok: true, bitrate: 128, cors: false, title: 'Led Zeppelin - Kashmir' }) }));
+    assert(db.pool.get(rows['Radio Mirchi'].uuid).genres.includes('rock'), JSON.stringify(db.pool.get(rows['Radio Mirchi'].uuid).genres));
+  });
+  await t('the scout saves what songs name (named), uses the station\'s country for the iTunes store, and reads MusicBrainz genres once per artist', async () => {
+    const db = fakeDb();
+    const asked = []; const mbAsked = [];
+    await run(base(db, {
+      fetchYp: async () => '<directory></directory>',
+      search: async () => [rb(1, { tags: 'electronic', name: 'Mix Station' }), rb(2, { tags: '', name: 'No Tags FM' })],
+      probe: async (u) => ({ ok: true, bitrate: 128, cors: false, title: u.includes('s1.') ? 'Some DJ - Night Drive' : 'Other DJ - Dark Hour' }),
+      songInfo: async (title, opts) => { asked.push([title, opts.country]); return { info: { genres: ['electronic'], year: 2019 }, known: true, key: title }; },
+      artistCountry: undefined,
+      artistInfo: async (artist) => { mbAsked.push(artist); return { country: 'DE', tags: /Some/.test(artist) ? ['synthwave', 'electronic'] : ['techno', 'minimal'] }; },
+    }));
+    const rows = Object.fromEntries([...db.pool.values()].map((r) => [r.name, r]));
+    assert.deepStrictEqual(asked.map((a) => a[1]), ['JP', 'JP']); // Japan's store for both
+    assert.deepStrictEqual(mbAsked.sort(), ['Other DJ', 'Some DJ']);
+    const a = rows['Mix Station'].samples[0], b = rows['No Tags FM'].samples[0];
+    assert(a.fits.includes('tag:synthwave') && a.named.includes('tag:synthwave')); // Apple says only Electronic; MusicBrainz names the style
+    assert(!b.fits.includes('tag:synthwave') && b.named.includes('tag:techno')); // MusicBrainz says Techno: not a Synthwave song
+    assert(a.fits.includes('electronic') && !a.named.includes('electronic'));
   });
   // The full Radio Browser list.
   const SPOTS = { JP: ['35.69', '139.69'], DE: ['52.52', '13.40'], BR: ['-23.55', '-46.63'], NZ: ['-36.85', '174.76'] };

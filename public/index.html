@@ -251,7 +251,7 @@
       <div class="mylist" id="myGenres"></div>
       <p class="empty" id="myGenresEmpty" hidden>Only Any is on your list. Add genres below.</p>
       <div class="label">ADD MORE · TAP A GENRE TO SEE STYLES</div>
-      <p class="hint">Numbers show how many stations each style has around the world. Some won't pass the live checks (song titles, speed, quality), so treat them as an upper limit.</p>
+      <p class="hint">The big number is stations checked and ready to play. The small one is how many the directory lists (<b>possible</b>): some won't pass the live checks (song titles, speed, quality). A style with none ready yet is dimmed but you can still add it.</p>
       <div class="catalog" id="genreCatalog"></div>
       <div class="drawer-foot">
         <button class="btn-ghost" id="resetGenres">RESET TO DEFAULTS</button>
@@ -259,6 +259,19 @@
       </div>
     </section>
   </div>
+
+  <!-- WRONG GENRE? follow-up: what was it really? Not modal: the player stays usable underneath. -->
+  <section class="reclass" id="reclass" role="dialog" aria-labelledby="reclassTitle" hidden>
+    <div class="reclass-head">
+      <h2 id="reclassTitle">&gt; RECLASSIFY SIGNAL</h2>
+      <button class="reclass-skip" id="reclassSkip" type="button" aria-label="Skip: send the report without a genre">SKIP ✕</button>
+    </div>
+    <p class="reclass-sub">TELL THE NESE WHAT THAT ONE WAS. ONLY LISTED GENRES COUNT.</p>
+    <input class="reclass-input" id="reclassInput" type="text" inputmode="search" enterkeyhint="done" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+      placeholder="TYPE A GENRE_" aria-label="Genre the song really is" role="combobox" aria-expanded="false" aria-controls="reclassList" aria-autocomplete="list">
+    <ul class="reclass-list" id="reclassList" role="listbox" aria-label="Matching genres"></ul>
+    <p class="reclass-none mono" id="reclassNone" hidden>&gt; NO SUCH GENRE ON FILE</p>
+  </section>
 
   <div class="boot" id="boot">
     <div class="boot-inner">
@@ -274,6 +287,8 @@
   <audio id="audio" preload="none" playsinline></audio>
 
   <script src="vendor/globe.gl.min.js"></script>
+  <script src="genre-names.js"></script>
+  <script src="suggest.js"></script>
   <script src="vibes.js"></script>
   <script src="app.js"></script>
 </body>

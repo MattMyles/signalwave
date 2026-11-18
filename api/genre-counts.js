@@ -1,58 +1,20 @@
 // GET /api/genre-counts?genre=metal
-// How many candidate stations the directory lists for a main genre and each of
-// its styles: stations with a secure stream and map coordinates, the same first
-// filters the app uses. Some of these still fail the live checks (fast start,
-// real song titles, quality floor), so treat the numbers as an upper bound.
-// Each style counts its other names too (TAG_ALIASES). Cached for a day.
-const { GENRES, STYLES, TAG_ALIASES } = require('../lib/config');
-const { searchStations } = require('../lib/radio');
-const { placeFromStation } = require('../lib/geo');
+// Station counts for a main genre and each of its styles, for the genre editor:
+//   counts[id] = { n, more, verified }
+//   verified  stations on the shelf that the scout has checked and that qualify for the
+//             genre (what can really play), or null when the shelf isn't set up
+//   n, more   candidate stations the directory lists (secure stream and a place); an upper
+//             bound, since some fail the live checks. `more` means the search hit its cap ("300+").
+// See lib/genrecounts.js. Directory counts stay a day in server memory; the response itself
+// is cached for 15 minutes so the verified numbers are never more than ~30 minutes old.
+const { GENRES, STYLES } = require('../lib/config');
+const { genreCounts } = require('../lib/genrecounts');
 const { query, sendJson } = require('../lib/http');
-
-const CAP = 300; // per name searched; totals at or above this show as "300+"
-const DAY = 24 * 60 * 60 * 1000;
-const cache = new Map(); // tag → { ids: Set, at }
-
-// Which main genre each style belongs to. Kept in step with CATALOG in public/app.js.
-
-
-async function idsForTag(tag) {
-  const hit = cache.get(tag);
-  if (hit && Date.now() - hit.at < DAY) return hit.ids;
-  const list = await searchStations({ tag, limit: CAP });
-  // Counts stations the app could place on the map: coordinates, or a place from
-  // their listed region, name, tags or addresses, down to just their country
-  // (see placeFromFields in lib/geo.js).
-  const placeable = (s) => (s.geo_lat != null && s.geo_long != null) || placeFromStation(s);
-  const ids = new Set(list.filter((s) => s.stationuuid && (s.url_resolved || '').startsWith('https://') && placeable(s)).map((s) => s.stationuuid));
-  cache.set(tag, { ids, at: Date.now() });
-  return ids;
-}
-
-async function countNames(names) {
-  const all = new Set();
-  let capped = false;
-  for (const ids of await Promise.all(names.map((n) => idsForTag(n).catch(() => new Set())))) {
-    if (ids.size >= CAP) capped = true;
-    ids.forEach((id) => all.add(id));
-  }
-  return { n: all.size, more: capped };
-}
 
 module.exports = async function handler(req, res) {
   const genre = String(query(req).get('genre') || '').toLowerCase().replace(/[^a-z]/g, '');
   if (!GENRES[genre] || !STYLES[genre]) return sendJson(res, 400, { error: 'Unknown genre.' });
-  const jobs = [
-    [genre, GENRES[genre].tags],
-    ...STYLES[genre].map((t) => [`tag:${t}`, [t, ...(TAG_ALIASES[t] || [])]]),
-  ];
-  // A few at a time, to be kind to the directory.
-  const counts = {};
-  for (let i = 0; i < jobs.length; i += 6) {
-    const batch = jobs.slice(i, i + 6);
-    const results = await Promise.all(batch.map(([, names]) => countNames(names)));
-    batch.forEach(([id], k) => { counts[id] = results[k]; });
-  }
-  res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=86400');
-  sendJson(res, 200, { genre, counts });
+  const counts = await genreCounts(genre).catch(() => null);
+  if (!counts) return sendJson(res, 502, { error: 'The directory did not answer.' });
+  sendJson(res, 200, { genre, counts }, 0, 'public, max-age=300, s-maxage=900, stale-while-revalidate=900');
 };

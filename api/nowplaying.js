@@ -8,9 +8,11 @@
 // Takes a station id rather than a URL so it can only open real station streams.
 const { probeStream } = require('../lib/icy');
 const { stationByUuid } = require('../lib/radio');
-const { knownStreamUrl, rememberStream, resolveGenres } = require('../lib/vet');
+const { knownStreamUrl, knownCountryOf, rememberStream, resolveGenres } = require('../lib/vet');
 const { songFits, splitSong, songKey } = require('../lib/songcheck');
 const { makeSongCache } = require('../lib/songcache');
+const { makeArtistCache } = require('../lib/artistcache');
+const { artistKey } = require('../lib/mbtags');
 const { makeDb } = require('../lib/sbrest');
 const { serviceEnv } = require('../lib/supabase-env');
 const { poolLookup } = require('../lib/pool');
@@ -23,17 +25,18 @@ module.exports = async function handler(req, res) {
   if (!/^[0-9a-f-]{36}$/i.test(uuid)) return sendJson(res, 400, { error: 'Missing or invalid station id.' });
   try {
     let url = knownStreamUrl(uuid);
+    let country = knownCountryOf(uuid);
     if (!url) {
       // Icecast-only stations live on the station shelf; for the rest the
       // shelf is the fallback when Radio Browser doesn't have (or can't say).
-      if (isIcecastId(uuid)) { const row = await poolLookup(uuid); if (row) url = row.url; }
+      if (isIcecastId(uuid)) { const row = await poolLookup(uuid); if (row) { url = row.url; country = row.country_code; } }
       let directoryError = null;
       if (!url) {
-        try { const s = await stationByUuid(uuid); if (s && s.url_resolved) url = s.url_resolved; } catch (e) { directoryError = e; }
+        try { const s = await stationByUuid(uuid); if (s && s.url_resolved) { url = s.url_resolved; country = s.countrycode; } } catch (e) { directoryError = e; }
       }
-      if (!url) { const row = await poolLookup(uuid); if (row) url = row.url; }
+      if (!url) { const row = await poolLookup(uuid); if (row) { url = row.url; country = row.country_code; } }
       if (!url) { if (directoryError) throw directoryError; return sendJson(res, 404, { error: 'Station not found.' }); }
-      rememberStream(uuid, url);
+      rememberStream(uuid, url, country);
     }
     // With genres the answer has to come back fast (the app waits 3 s); a title that
     // doesn't arrive in time just leaves fits null.
@@ -46,10 +49,11 @@ module.exports = async function handler(req, res) {
       if (p.ok) {
         const env = serviceEnv();
         cache = env ? makeSongCache(makeDb(env, { timeoutMs: 1500 }), Date.now, { timeoutMs: 1500 }) : null;
+        const artists = env ? makeArtistCache(makeDb(env, { timeoutMs: 1500 }), Date.now, { timeoutMs: 1500 }) : null; // MusicBrainz genres on file; never asked for here
         try {
           const sp = cache && p.title ? splitSong(p.title) : null;
-          if (sp) await cache.prefetch([songKey(sp.artist, sp.song)]);
-          out.fits = await songFits(p.title, spec, cache ? { cache } : undefined);
+          if (sp) await Promise.all([cache.prefetch([songKey(sp.artist, sp.song)]), artists.prefetch([artistKey(sp.artist)])]);
+          out.fits = await songFits(p.title, spec, { ...(cache ? { cache, artists } : {}), country });
         } catch (_) { out.fits = null; }
       }
     }
