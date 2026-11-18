@@ -38,7 +38,7 @@ const shelf = require('../lib/shelf');
 const scoutlist = require('../lib/scoutlist');
 
 const DAY = 86400000;
-const COLUMNS = ['uuid', 'source', 'name', 'url', 'homepage', 'favicon', 'tags', 'country', 'country_code', 'city', 'lat', 'lng', 'codec', 'bitrate', 'cors',
+const COLUMNS = ['uuid', 'source', 'name', 'url', 'homepage', 'favicon', 'tags', 'country', 'country_code', 'city', 'region', 'lat', 'lng', 'codec', 'bitrate', 'cors',
   'genres', 'samples', 'local_ratio', 'ok_count', 'fail_streak', 'status', 'first_seen_at', 'last_checked_at', 'last_ok_at'];
 const MAIN_IDS = Object.keys(cfg.GENRES);
 const COUNTRIES = [...new Set(Object.values(cfg.REGIONS).flat())].sort();
@@ -257,7 +257,7 @@ async function run(overrides = {}) {
           homepage: s.homepage || null, favicon: /^https:\/\//.test(s.favicon || '') ? s.favicon : null,
           rawTags, country: s.country || countryName(cc || place.countryCode) || 'Unknown',
           country_code: cc || null,
-          city: place.city, lat: place.lat, lng: place.lng, codec: s.codec || null, bitrate: Number(s.bitrate) || null,
+          city: place.city || null, region: place.city ? null : (place.region || null), lat: place.lat, lng: place.lng, codec: s.codec || null, bitrate: Number(s.bitrate) || null,
         },
       });
     }
@@ -313,7 +313,7 @@ async function run(overrides = {}) {
           cc: place.countryCode, nu, place,
           row: {
             uuid, source: 'icecast', name: vet.cleanName(e.name) || 'Unnamed station', url, homepage: null, favicon: null, rawTags,
-            country: countryName(place.countryCode), country_code: place.countryCode, city: place.city, lat: place.lat, lng: place.lng,
+            country: countryName(place.countryCode), country_code: place.countryCode, city: place.city, region: null, lat: place.lat, lng: place.lng,
             codec: /aac/.test(e.type || '') ? 'AAC' : 'MP3', bitrate: e.bitrate,
           },
         });
@@ -447,15 +447,31 @@ async function run(overrides = {}) {
       return Object.fromEntries(COLUMNS.map((c) => [c, row[c] === undefined ? null : row[c]]));
     }
 
+    // The region column comes from migration 20261118060000_station_region.sql. Until it's
+    // run, the scout keeps working and simply leaves region out (said once).
+    let regionMissing = false;
+    const noRegion = (rows) => rows.map(({ region, ...rest }) => rest);
+    const regionColumnError = (e) => e && /42703|PGRST204|['"]region['"] column|column ['"]?region/i.test(`${e.body || ''} ${e.message || ''}`);
+    async function upsertRows(rows) {
+      if (!regionMissing) {
+        try { return await db.upsert('station_pool', rows); } catch (e) {
+          if (!regionColumnError(e)) throw e;
+          regionMissing = true;
+          note('station_pool has no region column yet (run migration 20261118060000_station_region.sql); saving without it');
+        }
+      }
+      return db.upsert('station_pool', noRegion(rows));
+    }
+
     // Upserts in batches; returns the ids of rows the database refused.
     async function save(rows) {
       const refused = new Set();
       for (let i = 0; i < rows.length; i += 100) {
         const batch = rows.slice(i, i + 100);
-        try { await db.upsert('station_pool', batch); } catch (_) {
+        try { await upsertRows(batch); } catch (_) {
           // One bad row (say, a stream address already on file) mustn't lose the batch.
           bump('batch_retry');
-          for (const r of batch) { try { await db.upsert('station_pool', [r]); } catch (__) { bump('row_refused'); refused.add(r.uuid); } }
+          for (const r of batch) { try { await upsertRows([r]); } catch (__) { bump('row_refused'); refused.add(r.uuid); } }
         }
       }
       return refused;

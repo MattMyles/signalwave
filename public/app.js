@@ -81,7 +81,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '53';
+  const BUILD = '54';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -387,7 +387,7 @@
   function rememberLast(s) {
     state.lastStation = {
       uuid: s.uuid, name: s.name, url: s.url, favicon: s.favicon, tags: s.tags, genre: s.genre,
-      city: s.city, country: s.country, countryCode: s.countryCode, lat: s.lat, lng: s.lng,
+      city: s.city, region: s.region, country: s.country, countryCode: s.countryCode, lat: s.lat, lng: s.lng,
       bitrate: s.bitrate, codec: s.codec, cors: s.cors, at: Date.now(),
     };
     store.set('sw.lastStation', state.lastStation);
@@ -508,6 +508,7 @@
     if (!span || !span.parentElement) return;
     if (span._anim) { span._anim.cancel(); span._anim = null; }
     const box = span.parentElement;
+    if (span.classList.contains('city-glitch')) { box.classList.remove('overflowing'); return; } // fixed-size effect, never scrolls
     const over = Math.ceil(span.scrollWidth - box.clientWidth);
     box.classList.toggle('overflowing', over > 2);
     if (over <= 2 || reduced || !span.animate || box.clientWidth === 0) return;
@@ -533,6 +534,18 @@
     if (!cc || !/^[A-Z]{2}$/.test(cc)) return '';
     return String.fromCodePoint(...[...cc].map((c) => 0x1f1a5 + c.charCodeAt(0)));
   }
+  // Where a station is, for every place that names it in text. A station whose
+  // city couldn't be determined has city null: fall back to its region (state or
+  // province), then its country. Never "null" or "undefined".
+  function placeName(s) { return (s && (s.city || s.region || s.country)) || ''; }
+  // "Tokyo, Japan" / "Indiana, United States" / "Japan"
+  function placeLine(s) {
+    if (!s) return '';
+    const first = s.city || s.region || '';
+    return [first, s.country].filter((x, i, a) => x && a.indexOf(x) === i).join(', ');
+  }
+  // The COUNTRY line: the region goes with it when the city is unknown.
+  function countryLine(s) { return `${flag(s.countryCode)} ${s.city ? s.country : placeLine({ region: s.region, country: s.country })}`.trim(); }
 
   /* ---------- Track log ---------- */
   // The last 5 songs heard on this device, newest first, for the LAST 5 popout.
@@ -543,7 +556,7 @@
     if (!title || !s || s.egg) return;
     const top = state.songLog[0];
     if (top && top.title === title) return;
-    state.songLog = [{ title, uuid: s.uuid, station: s.name, city: s.city, cc: s.countryCode, at: Date.now() },
+    state.songLog = [{ title, uuid: s.uuid, station: s.name, city: s.city, region: s.region, country: s.country, cc: s.countryCode, at: Date.now() },
       ...state.songLog.filter((x) => x.title !== title)].slice(0, LOG_MAX);
     store.set('sw.songLog', state.songLog);
     if (!$('trackLog').hidden) renderLog();
@@ -572,7 +585,7 @@
       li.querySelector('.log-song').textContent = song;
       li.querySelector('.log-artist').textContent = artist || x.station;
       // Time first so it never gets cut off; then where it was heard.
-      li.querySelector('.log-where').textContent = `${agoText(x.at)} · ${flag(x.cc)} ${x.city || ''} · ${x.station}`.replace(/ · $/, '');
+      li.querySelector('.log-where').textContent = `${agoText(x.at)} · ${flag(x.cc)} ${x.city || x.region || x.country || ''} · ${x.station}`.replace(/ · $/, '');
       list.appendChild(li);
     }
     $('logEmpty').hidden = state.songLog.length > 0;
@@ -624,12 +637,31 @@
     }
   }
 
+  // The CITY value. With no city (only the country was known) it shows a static
+  // interference effect, done in CSS alone (.city-glitch), instead of a name.
+  function setCityField(s) {
+    const el = $('city');
+    if (s.city) {
+      el.classList.remove('city-glitch');
+      el.removeAttribute('aria-label');
+      el.removeAttribute('role');
+      decode(el, s.city);
+      return;
+    }
+    clearInterval(el._decode);
+    if (el._anim) { el._anim.cancel(); el._anim = null; }
+    el.classList.add('city-glitch');
+    el.setAttribute('role', 'img');
+    el.setAttribute('aria-label', 'City unknown');
+    el.textContent = 'CITY DATA CORRUPTED';
+  }
+
   function renderStation(s) {
     setSong(s.title);
     decode($('station'), s.name);
     decode($('genre'), s.genre || '—');
-    decode($('city'), s.city);
-    $('country').textContent = `${flag(s.countryCode)} ${s.country}`.trim();
+    setCityField(s);
+    $('country').textContent = countryLine(s);
     fitScroll($('country'));
     const bars = s.bitrate >= 256 ? 4 : s.bitrate >= 128 ? 3 : s.bitrate >= 64 ? 2 : 1;
     $('sig').textContent = `SIG ${'▮'.repeat(bars)}${'▯'.repeat(4 - bars)}${s.bitrate ? ` ${s.bitrate}K` : ''}`;
@@ -968,7 +1000,7 @@
         const el = document.createElement('div');
         el.className = 'city-label';
         el.style.willChange = 'transform'; // moved every frame: its own layer, no repaint
-        el.innerHTML = `<b>${esc(d.city.toUpperCase())}</b>${Math.abs(d.lat).toFixed(2)}°${d.lat >= 0 ? 'N' : 'S'} ${Math.abs(d.lng).toFixed(2)}°${d.lng >= 0 ? 'E' : 'W'}`;
+        el.innerHTML = `<b>${esc(d.name.toUpperCase())}</b>${Math.abs(d.lat).toFixed(2)}°${d.lat >= 0 ? 'N' : 'S'} ${Math.abs(d.lng).toFixed(2)}°${d.lng >= 0 ? 'E' : 'W'}`;
         return el;
       });
 
@@ -1015,7 +1047,7 @@
     updateRings();
     const s = state.current;
     if (s) {
-      globe.htmlElementsData([{ lat: s.lat, lng: s.lng, city: s.city }]);
+      globe.htmlElementsData([{ lat: s.lat, lng: s.lng, name: placeName(s) }]);
       globe.pointOfView({ lat: s.lat, lng: s.lng, altitude: 1.8 }, 0);
       scheduleDrift();
     }
@@ -1232,7 +1264,7 @@
       color: ['rgba(255,62,200,0.6)', 'rgba(252,238,10,1)'], dash: 1, gap: 0, initial: 0, time: 0,
     }] : [];
     globe.arcsData([...network.arcs, ...journey]);
-    globe.htmlElementsData([{ lat: s.lat, lng: s.lng, city: s.city }]);
+    globe.htmlElementsData([{ lat: s.lat, lng: s.lng, name: placeName(s) }]);
     // The hidden track pulls back so the whole globe can dribble like a ball.
     // Vibe mode pulls back so the whole globe sits among the effects.
     const close = s.egg ? eggAltitude() : document.body.classList.contains('vibe') ? 2.0 : narrow.matches ? 0.9 : 0.8;
@@ -1301,7 +1333,7 @@
       globeEl.style.cursor = f ? 'pointer' : '';
       favTip.hidden = !f;
       if (!f) { tipFor = null; return; }
-      if (f !== tipFor) { favTip.innerHTML = `<span class="city-label"><b>${esc(f.name)}</b>${esc(f.city || '')}</span>`; tipFor = f; }
+      if (f !== tipFor) { favTip.innerHTML = `<span class="city-label"><b>${esc(f.name)}</b>${esc(placeName(f))}</span>`; tipFor = f; }
       favTip.style.left = `${m.clientX}px`;
       favTip.style.top = `${m.clientY}px`;
     });
@@ -1336,7 +1368,7 @@
     } else {
       state.favorites.unshift({
         uuid: s.uuid, name: s.name, url: s.url, favicon: s.favicon, tags: s.tags, genre: s.genre,
-        city: s.city, country: s.country, countryCode: s.countryCode, lat: s.lat, lng: s.lng,
+        city: s.city, region: s.region, country: s.country, countryCode: s.countryCode, lat: s.lat, lng: s.lng,
         bitrate: s.bitrate, codec: s.codec, cors: s.cors, lastSong: state.title, addedAt: new Date().toISOString(),
       });
       const btn = $('favBtn');
@@ -1379,7 +1411,7 @@
         ${f.favicon ? `<img src="${esc(f.favicon)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="noicon">FM</span>'}
         <span class="info">
           <span class="name"><span class="scroll">${esc(f.name)}</span></span>
-          <span class="where"><span class="scroll">${flag(f.countryCode)} ${esc(f.city)}, ${esc(f.country)}</span></span>
+          <span class="where"><span class="scroll">${flag(f.countryCode)} ${esc(placeLine(f))}</span></span>
         </span>
         <button class="pick" role="checkbox" aria-checked="${on}" aria-label="Export ${esc(f.name)}">${on ? '✓' : ''}</button>`;
         const pimg = li.querySelector('img');
@@ -1391,7 +1423,7 @@
         ${f.favicon ? `<img src="${esc(f.favicon)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="noicon">FM</span>'}
         <button class="info" data-play="${esc(f.uuid)}" aria-label="Play ${esc(f.name)}">
           <span class="name"><span class="scroll">${esc(f.name)}</span></span>
-          <span class="where"><span class="scroll">${flag(f.countryCode)} ${esc(f.city)}, ${esc(f.country)}</span></span>
+          <span class="where"><span class="scroll">${flag(f.countryCode)} ${esc(placeLine(f))}</span></span>
           ${f.lastSong ? `<span class="last"><span class="scroll">Last heard: ${esc(f.lastSong)}</span></span>` : ''}
         </button>
         <button class="share" data-share="${esc(f.uuid)}" aria-label="Copy a link to ${esc(f.name)}" title="Copy link">
@@ -1460,7 +1492,8 @@
   }
   async function copyStationLink(f) {
     const url = stationLink(f.uuid);
-    const text = `Listen to ${f.name} from ${f.city} on Neo Earth Radio`;
+    const where = placeName(f);
+    const text = `Listen to ${f.name}${where ? ` from ${where}` : ''} on Neo Earth Radio`;
     const canShare = typeof navigator.share === 'function';
     if (await copyText(url)) {
       toast('> LINK COPIED', canShare ? { label: 'SHARE…', fn: () => navigator.share({ title: f.name, text, url }).catch(() => {}) } : null);
@@ -1486,13 +1519,13 @@
     const s = j.station;
     state.favorites.unshift({
       uuid: s.uuid, name: s.name, url: s.url, favicon: s.favicon, tags: s.tags, genre: s.genre,
-      city: s.city, country: s.country, countryCode: s.countryCode, lat: s.lat, lng: s.lng,
+      city: s.city, region: s.region, country: s.country, countryCode: s.countryCode, lat: s.lat, lng: s.lng,
       bitrate: s.bitrate, codec: s.codec, cors: s.cors, lastSong: s.lastSong, addedAt: new Date().toISOString(),
     });
     saveFavs();
     setFavButton();
     toast(`> SAVED ${s.name.toUpperCase()}`);
-    addMsg(s.live ? `Added ${s.name} (${s.city}, ${s.country}).` : `Added ${s.name}. It isn't answering right now, so it may be off the air.`);
+    addMsg(s.live ? `Added ${s.name} (${placeLine(s)}).` : `Added ${s.name}. It isn't answering right now, so it may be off the air.`);
     return state.favorites[0];
   }
   function addMsg(text, warn = false) {
@@ -1796,7 +1829,7 @@
       const el = document.querySelector(`#genreCatalog [data-n="${CSS.escape(id)}"]`);
       if (!el) continue;
       el.textContent = c.more ? `${c.n}+` : String(c.n);
-      el.title = `${el.textContent} stations listed with a city and secure stream`;
+      el.title = `${el.textContent} stations listed with a place and secure stream`;
       el.closest('.sub').classList.toggle('empty', c.n === 0);
     }
   }
@@ -1912,8 +1945,8 @@
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: rest.length ? rest.join(' - ') : (state.title || s.name),
-        artist: rest.length ? artist : `${s.city}, ${s.country}`,
-        album: `${s.name} · ${s.city}`,
+        artist: rest.length ? artist : placeLine(s),
+        album: [s.name, placeName(s)].filter(Boolean).join(' · '),
         artwork: s.favicon ? [{ src: s.favicon, sizes: '512x512' }] : [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml' }],
       });
     } catch (_) { /* older browsers */ }
@@ -2396,7 +2429,7 @@
     const list = [];
     const cur = state.current;
     if (cur && !cur.egg) list.push({ s: cur, label: `▶ NOW PLAYING: ${cur.name}` });
-    for (const f of state.favorites) if (!cur || f.uuid !== cur.uuid || cur.egg) list.push({ s: f, label: `♥ ${f.name}${f.city ? ` (${f.city})` : ''}` });
+    for (const f of state.favorites) if (!cur || f.uuid !== cur.uuid || cur.egg) list.push({ s: f, label: `♥ ${f.name}${placeName(f) ? ` (${placeName(f)})` : ''}` });
     return list;
   }
   function fillTxSignals(preferUuid) {
@@ -2439,7 +2472,7 @@
     $('txGo').disabled = true;
     txMsg('Transmitting…');
     let j = null;
-    try { j = await neseCall('POST', { action: 'send', to, station: { uuid: f.uuid, name: f.name, city: f.city, country: f.country } }); } catch (_) { /* below */ }
+    try { j = await neseCall('POST', { action: 'send', to, station: { uuid: f.uuid, name: f.name, city: f.city, region: f.region, country: f.country } }); } catch (_) { /* below */ }
     $('txGo').disabled = false;
     if (!j || !j.ok) return txMsg((j && j.error) || 'NESE network unreachable. Try again.', 'warn');
     txMsg(`> ${f.name} transmitted to ${j.to}.`, 'ok');
@@ -2448,7 +2481,7 @@
 
   function openSendSheet(f) {
     sendFor = f;
-    $('sendStation').textContent = `> ${f.name} // ${[f.city, f.country].filter(Boolean).join(', ')}`;
+    $('sendStation').textContent = `> ${f.name} // ${placeLine(f)}`;
     $('sendMsg').hidden = true;
     $('sendSheet').hidden = false;
     $('sendTo').focus();
@@ -2470,7 +2503,7 @@
     btn.disabled = true;
     sendMsg('Transmitting…');
     let j = null;
-    try { j = await neseCall('POST', { action: 'send', to, station: { uuid: f.uuid, name: f.name, city: f.city, country: f.country } }); } catch (_) { /* below */ }
+    try { j = await neseCall('POST', { action: 'send', to, station: { uuid: f.uuid, name: f.name, city: f.city, region: f.region, country: f.country } }); } catch (_) { /* below */ }
     btn.disabled = false;
     if (!j || !j.ok) return sendMsg((j && j.error) || 'NESE network unreachable. Try again.', true);
     closeSendSheet();

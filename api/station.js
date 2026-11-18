@@ -2,7 +2,7 @@
 // shared station to someone's saved list. Unlike /api/next this doesn't
 // require song titles: the person chose this station on purpose.
 const { stationByUuid } = require('../lib/radio');
-const { reverseGeocode, largestCity, placeFromStation } = require('../lib/geo');
+const { locateStation } = require('../lib/geo');
 const { probeStream } = require('../lib/icy');
 const { rememberStream, splitTags } = require('../lib/vet');
 const { poolLookup } = require('../lib/pool');
@@ -25,7 +25,8 @@ async function sendShelfStation(res, row) {
       favicon: /^https:\/\//.test(row.favicon || '') ? row.favicon : null,
       tags,
       genre: tags.slice(0, 2).join(' / ') || null,
-      city: row.city || row.country || 'Unknown',
+      city: row.city || null, // null: only the country is known (region may name its state)
+      region: row.city ? null : (row.region || null),
       country: row.country || 'Unknown',
       countryCode: row.country_code || null,
       lat: row.lat, lng: row.lng,
@@ -57,19 +58,18 @@ module.exports = async function handler(req, res) {
   if (!s.url_resolved.startsWith('https://')) return sendJson(res, 422, { error: "That station's stream isn't secure (HTTPS), so it can't play here." });
 
   const cc = (s.countrycode || '').toUpperCase() || null;
-  let lat = Number(s.geo_lat);
-  let lng = Number(s.geo_long);
-  let city = null;
-  if (Number.isFinite(lat) && Number.isFinite(lng) && s.geo_lat != null) {
-    const place = await reverseGeocode(lat, lng, cc);
-    if (place) city = place.city;
-  } else {
-    // No map location: a city from its region, name, tags or addresses, else the
-    // country's largest city so the globe still flies somewhere.
-    const big = placeFromStation(s) || largestCity(cc);
-    if (big) { lat = big.lat; lng = big.lng; city = big.city; }
-  }
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return sendJson(res, 422, { error: "That station has no location, so it can't be shown on the globe." });
+  // Its coordinates, else a city from its region, name, tags or addresses, else
+  // its country (city null, region = its state when it lists a usable one).
+  let where = await locateStation(s);
+  // A shared link is a deliberate choice, so a station with its own coordinates but no
+  // usable country is still shown at those coordinates.
+  const ownLat = s.geo_lat != null ? Number(s.geo_lat) : NaN;
+  const ownLng = s.geo_long != null ? Number(s.geo_long) : NaN;
+  if (!where && Number.isFinite(ownLat) && Number.isFinite(ownLng) && !(ownLat === 0 && ownLng === 0)) where = { city: null, region: null, lat: ownLat, lng: ownLng };
+  if (!where || !Number.isFinite(where.lat) || !Number.isFinite(where.lng)) return sendJson(res, 422, { error: "That station has no location, so it can't be shown on the globe." });
+  const { lat, lng } = where;
+  const city = where.city || null;
+  const region = city ? null : (where.region || null);
 
   const p = await probeStream(s.url_resolved);
   const tags = splitTags(s.tags);
@@ -82,7 +82,8 @@ module.exports = async function handler(req, res) {
       favicon: /^https:\/\//.test(s.favicon || '') ? s.favicon : null,
       tags,
       genre: tags.slice(0, 2).join(' / ') || null,
-      city: city || s.state || s.country || 'Unknown',
+      city,
+      region,
       country: s.country || 'Unknown',
       countryCode: cc,
       lat, lng,

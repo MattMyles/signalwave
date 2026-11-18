@@ -1,6 +1,6 @@
 // NESE member ID and transmissions (stations sent between members).
 //   GET  /api/nese                          → { id, number, inbox: [...] }  (assigns an ID on first call)
-//   POST /api/nese { action: 'send', to, station: { uuid, name, city, country } }
+//   POST /api/nese { action: 'send', to, station: { uuid, name, city, region, country } }  (region stands in when the city is unknown)
 //   POST /api/nese { action: 'dismiss', id }
 // Needs a signed-in user (their access token) and the server-only service key.
 // Members only ever see each other's NESE IDs, never emails.
@@ -63,7 +63,7 @@ module.exports = async function handler(req, res) {
       const st = body.station || {};
       if (to == null) return sendJson(res, 400, { error: 'Enter a NESE ID like NESE-0007.' });
       if (!UUID.test(String(st.uuid || ''))) return sendJson(res, 400, { error: 'That station can\'t be sent.' });
-      const place = [text(st.city, 90), text(st.country, 90)].filter(Boolean).join(', ') || null;
+      const place = [text(st.city, 90) || text(st.region, 90), text(st.country, 90)].filter(Boolean).join(', ') || null;
       const result = await rpc(env, 'nese_send', {
         p_from: user.id, p_to: to, p_uuid: String(st.uuid).toLowerCase(), p_name: text(st.name, 200), p_place: place,
       });

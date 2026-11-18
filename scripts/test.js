@@ -45,7 +45,8 @@ function icyBody(metaint, title) {
   const { placeFromFields } = require('../lib/geo');
   const CITIES = require('../lib/cities.json');
   const ALIASES = require('../lib/city-aliases');
-  const at = (o) => { const r = placeFromFields(o); return r ? `${r.city}|${r.countryCode}|${r.how}` : null; };
+  // at() is about finding a real city: a country-level answer (city null) counts as "no city" here; those are tested separately below.
+  const at = (o) => { const r = placeFromFields(o); return r && r.city ? `${r.city}|${r.countryCode}|${r.how}` : null; };
   await t('region field: administrative words, "City, Region" forms and exact names', () => {
     assert.strictEqual(at({ state: 'Tokyo Prefecture', countryCode: 'JP' }), 'Tokyo|JP|state');
     assert.strictEqual(at({ state: 'Tokyo-to', countryCode: 'JP' }), 'Tokyo|JP|state');
@@ -163,7 +164,7 @@ function icyBody(metaint, title) {
         // The alias, written as the region field, finds that city (this also catches aliases that are NOT_PLACES words).
         // (State and province names in federal countries are skipped on purpose: "New York" as a region isn't the city.)
         const got = placeFromFields({ state: alias, countryCode: cc });
-        if (got || !require('../lib/geo').isRegionName(alias, cc)) assert(got && got.city === canonical && got.countryCode === cc, `${alias} (${cc}) -> ${got && got.city}, wanted ${canonical}`);
+        if ((got && got.city) || !require('../lib/geo').isRegionName(alias, cc)) assert(got && got.city === canonical && got.countryCode === cc, `${alias} (${cc}) -> ${got && got.city}, wanted ${canonical}`);
         // A city of 100,000+ is also found by its alias inside a name.
         if (top[4] >= 100000 && alias.replace(/\W/gu, '').length >= 4 || (top[4] >= 100000 && /[぀-ヿ㐀-鿿가-힯฀-๿]/.test(alias))) {
           const byName = placeFromFields({ name: `Radio ${alias} FM`, countryCode: cc });
@@ -172,6 +173,70 @@ function icyBody(metaint, title) {
       }
     }
     assert(ALIASES.length >= 200, `only ${ALIASES.length} entries`);
+  });
+  // Country-level placement: when no city can be found, the station sits at its country (city null).
+  const { countryCenter, cleanRegion, locateStation, placeFromStation } = require('../lib/geo');
+  const kmBetween = (a, b, c, d) => { const r = Math.PI / 180; const x = Math.sin(((c - a) * r) / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin(((d - b) * r) / 2) ** 2; return 12742 * Math.asin(Math.sqrt(x)); };
+  const nearestKm = (cc, p) => Math.min(...CITIES.filter((c) => c[3] === cc).map((c) => kmBetween(p.lat, p.lng, c[1], c[2])));
+  await t('countryCenter: lands within 500 km of one of the country\'s own cities (US, Russia and Fiji across the dateline, Indonesia, Chile, Luxembourg)', () => {
+    for (const cc of ['US', 'RU', 'FJ', 'ID', 'CL', 'LU', 'NZ', 'KI', 'JP', 'CA', 'AU', 'CN', 'TO', 'SG']) {
+      const c = countryCenter(cc);
+      assert(c && Number.isFinite(c.lat) && Number.isFinite(c.lng) && Math.abs(c.lat) <= 90 && Math.abs(c.lng) <= 180, cc);
+      assert(nearestKm(cc, c) <= 500, `${cc} centre ${c.lat.toFixed(1)},${c.lng.toFixed(1)} is ${Math.round(nearestKm(cc, c))} km from its nearest city`);
+    }
+    assert(countryCenter('FJ').lng > 170 || countryCenter('FJ').lng < -170, 'Fiji stays out near the dateline, not on the far side of the world');
+    assert.strictEqual(countryCenter('ZZ'), null); assert.strictEqual(countryCenter(''), null); assert.strictEqual(countryCenter(undefined), null);
+    assert.deepStrictEqual(countryCenter('us'), countryCenter('US'));
+  });
+  await t('countryCenter: every country on file gets a point at or near one of its cities (never at sea)', () => {
+    for (const cc of new Set(CITIES.map((c) => c[3]))) { const c = countryCenter(cc); assert(c && nearestKm(cc, c) <= 400.5, `${cc} ${Math.round(nearestKm(cc, c))} km`); }
+  });
+  await t('region cleaning: letters only, 40 characters at most, title case, never a URL, the country or an ordinary word', () => {
+    const r = (x, cc = 'US', country = 'United States') => cleanRegion(x, cc, country);
+    assert.strictEqual(r('Indiana'), 'Indiana'); assert.strictEqual(r('Ontario', 'CA', 'Canada'), 'Ontario');
+    assert.strictEqual(r('  new   south wales '), 'New South Wales'); assert.strictEqual(r('NEW SOUTH WALES'), 'New South Wales');
+    assert.strictEqual(r("o'higgins", 'CL', 'Chile'), "O'Higgins"); assert.strictEqual(r('Île-de-France', 'FR', 'France'), 'Île-de-France'); assert.strictEqual(r('東京都', 'JP', 'Japan'), '東京都');
+    assert.strictEqual(r('Баварія', 'UA', 'Ukraine'), 'Баварія'); assert.strictEqual(r('St. Louis'), 'St. Louis'); assert.strictEqual(r('Mecklenburg-Vorpommern', 'DE', 'Germany'), 'Mecklenburg-Vorpommern');
+    for (const bad of ['', '   ', null, undefined, 'Region 5', 'Bayern 2', '90210', 'Indiana, USA', 'https://radio.example.com', 'www.radio.fm', 'radio.example.com', 'a'.repeat(41), '-Indiana', '!!', 'Paradise', 'RADIO', 'Hits', 'United States', 'united states', 'US', 'us']) assert.strictEqual(r(bad), null, String(bad));
+    assert.strictEqual(r('a'.repeat(40)), 'A'.repeat(1) + 'a'.repeat(39));
+    assert.strictEqual(r('Germany', 'DE', 'Germany'), null); assert.strictEqual(r('Deutschland', 'DE', 'Germany'), 'Deutschland'); // another language's name isn't recognised (kept: still a place name)
+    assert.strictEqual(r('Georgia', 'GE', ''), null, 'Intl names the country when the station gives none');
+  });
+  await t('fallback order: a real city always wins; with none, the country (region kept); with no country, nothing', () => {
+    const at2 = (o) => placeFromFields(o);
+    // A city found by any source beats the country.
+    for (const o of [{ state: 'Tokyo Prefecture', countryCode: 'JP' }, { name: 'Radio Kraków', countryCode: 'PL' }, { tags: 'hamburg', countryCode: 'DE' }, { homepage: 'https://radio-hamburg.example.de', countryCode: 'DE' }]) {
+      const r = at2(o); assert(r && r.city && r.how !== 'country' && r.region === null, JSON.stringify(o));
+    }
+    // A state name from REGION_NAMES places no city, but it is a good region.
+    const ind = at2({ state: 'Indiana', name: 'Hoosier Rock', countryCode: 'US', country: 'United States' });
+    assert.strictEqual(ind.city, null); assert.strictEqual(ind.region, 'Indiana'); assert.strictEqual(ind.how, 'country'); assert.strictEqual(ind.countryCode, 'US');
+    const us = countryCenter('US'); assert.strictEqual(ind.lat, us.lat); assert.strictEqual(ind.lng, us.lng);
+    assert.strictEqual(at2({ state: 'Ontario', countryCode: 'CA' }).region, 'Ontario'); assert.strictEqual(at2({ state: 'Ontario', countryCode: 'CA' }).city, null);
+    // No usable state: still kept, region null.
+    for (const state of ['', undefined, 'United States', 'www.example.com', 'Paradise']) { const r = at2({ state, name: 'Some Radio', countryCode: 'US', country: 'United States' }); assert(r && r.city === null && r.region === null && r.how === 'country', String(state)); }
+    // Lower-case country codes work; no country code, a bad one, or a country with no cities give null.
+    assert.strictEqual(at2({ name: 'Some Radio', countryCode: 'fr' }).countryCode, 'FR');
+    for (const countryCode of [undefined, '', 'USA', 'U', '12', 'ZZ']) assert.strictEqual(at2({ state: 'Indiana', name: 'Some Radio', countryCode }), null, String(countryCode));
+    assert.strictEqual(cityFromText('Indiana', 'Hoosier Rock', 'US').city, null);
+    assert.strictEqual(cityFromText('Indiana', 'Hoosier Rock', '' ), null);
+  });
+  await t('locateStation: coordinates win; far from any town it stays at the country; no country, no place', async () => {
+    const tok = await locateStation({ geo_lat: '35.69', geo_long: '139.69', countrycode: 'JP', name: 'Tokyo FM' });
+    assert.strictEqual(tok.city, 'Tokyo'); assert.strictEqual(tok.how, 'coords'); assert.strictEqual(tok.region, null);
+    // Middle of the Nevada desert: no town within 40 km, so country level, keeping the station's own spot (it is inside the US) and its region.
+    const desert = await locateStation({ geo_lat: '39.5', geo_long: '-117.0', countrycode: 'US', country: 'United States', state: 'Nevada', name: 'Desert Rock' });
+    assert.strictEqual(desert.city, null); assert.strictEqual(desert.how, 'country'); assert.strictEqual(desert.region, 'Nevada'); assert.strictEqual(desert.lat, 39.5); assert.strictEqual(desert.lng, -117);
+    // Coordinates nowhere near the claimed country (bad data): the country's centre instead.
+    const wrong = await locateStation({ geo_lat: '-40', geo_long: '-100', countrycode: 'DE', country: 'Germany', name: 'Odd Rock' });
+    assert.strictEqual(wrong.city, null); assert.deepStrictEqual({ lat: wrong.lat, lng: wrong.lng }, countryCenter('DE'));
+    // No coordinates: placed from text, else the country.
+    assert.strictEqual((await locateStation({ state: 'Hamburg', countrycode: 'DE', name: 'x' })).city, 'Hamburg');
+    assert.strictEqual((await locateStation({ state: 'Bavaria', countrycode: 'DE', country: 'Germany', name: 'x' })).region, 'Bavaria');
+    assert.strictEqual(await locateStation({ name: 'x', state: 'Bavaria' }), null);
+    assert.strictEqual(await locateStation({ geo_lat: '35.69', geo_long: '139.69', name: 'Tokyo FM' }).then((r) => r && r.city), 'Tokyo'); // coordinates with no country code still resolve to a city
+    assert.strictEqual(await locateStation({ geo_lat: '0', geo_long: '0', name: 'Null Island' }), null);
+    assert.strictEqual(placeFromStation({ state: 'Texas', countrycode: 'US', country: 'United States', name: 'Radio', url_resolved: 'https://a.example.com/x' }).region, 'Texas');
   });
   const { translateTags } = require('../lib/translate');
   const tr = (x) => translateTags(splitTags(x));

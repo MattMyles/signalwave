@@ -20,8 +20,9 @@ async function idsForTag(tag) {
   const hit = cache.get(tag);
   if (hit && Date.now() - hit.at < DAY) return hit.ids;
   const list = await searchStations({ tag, limit: CAP });
-  // Counts stations the app could place on the map: coordinates, or a city in
-  // their listed region, name, tags or addresses (see placeFromFields in lib/geo.js).
+  // Counts stations the app could place on the map: coordinates, or a place from
+  // their listed region, name, tags or addresses, down to just their country
+  // (see placeFromFields in lib/geo.js).
   const placeable = (s) => (s.geo_lat != null && s.geo_long != null) || placeFromStation(s);
   const ids = new Set(list.filter((s) => s.stationuuid && (s.url_resolved || '').startsWith('https://') && placeable(s)).map((s) => s.stationuuid));
   cache.set(tag, { ids, at: Date.now() });

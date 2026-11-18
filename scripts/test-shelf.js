@@ -220,7 +220,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const ask = calls.find((c) => c.url.includes('pool_candidates')).body;
     assert.deepStrictEqual(ask.p_keys.sort(), ['rock', 'tag:classic rock']);
     assert(ask.p_exclude.includes('heard-1') && ask.p_exclude.includes('heard-2')); assert.strictEqual(ask.p_limit, 60);
-    assert.deepStrictEqual(Object.keys(s).sort(), ['bitrate', 'city', 'codec', 'cors', 'country', 'countryCode', 'favicon', 'genre', 'homepage', 'lat', 'lng', 'localArtist', 'name', 'source', 'tags', 'title', 'url', 'uuid'].sort());
+    assert.deepStrictEqual(Object.keys(s).sort(), ['bitrate', 'city', 'codec', 'cors', 'country', 'countryCode', 'favicon', 'genre', 'homepage', 'lat', 'lng', 'localArtist', 'name', 'region', 'source', 'tags', 'title', 'url', 'uuid'].sort());
     assert.strictEqual(s.uuid, row().uuid); assert.strictEqual(s.title, 'The Pillows - Funny Bunny'); // the latest sample
     assert.strictEqual(s.localArtist, true); assert.strictEqual(s.countryCode, 'JP'); assert.strictEqual(s.bitrate, 192); assert.strictEqual(s.cors, true);
     assert(Array.isArray(s.tags) && s.tags.includes('classic rock')); assert.strictEqual(s.genre, 'classic rock');
@@ -270,6 +270,27 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     }
     assert(n.local > n.mixed && n.mixed > n.foreign, JSON.stringify(n));
     assert(n.unknown > n.foreign && n.foreign > 300, JSON.stringify(n));
+  });
+  await t('stations with no known city are served at country level (city null, region kept) and are picked a bit less often', async () => {
+    resetPool();
+    const noCity = row({ name: 'Indiana FM', city: null, region: 'Indiana', country: 'United States', country_code: 'US', lat: 38.8, lng: -93 });
+    mockShelf((u) => (u.includes('pool_candidates') ? { json: [noCity] } : { json: null }));
+    const s = await poolNext(null, new Set(), [], { probe: okProbe });
+    assert.strictEqual(s.city, null); assert.strictEqual(s.region, 'Indiana'); assert.strictEqual(s.country, 'United States'); assert.strictEqual(s.countryCode, 'US');
+    // An older row (no region column at all) and a city row never show a region.
+    mockShelf((u) => (u.includes('pool_candidates') ? { json: [row({ city: null })] } : { json: null }));
+    assert.strictEqual((await poolNext(null, new Set(), [], { probe: okProbe })).region, null);
+    mockShelf((u) => (u.includes('pool_candidates') ? { json: [row({ region: 'Kanto' })] } : { json: null }));
+    const withCity = await poolNext(null, new Set(), [], { probe: okProbe });
+    assert.strictEqual(withCity.city, 'Tokyo'); assert.strictEqual(withCity.region, null);
+    // Weights: the same local ratio, a city vs no city is 1 : 0.6.
+    const { weightOf, NO_CITY_WEIGHT } = require('../lib/pool');
+    assert.strictEqual(NO_CITY_WEIGHT, 0.6);
+    for (const ratio of [null, 0, 0.5, 1]) assert(Math.abs(weightOf({ local_ratio: ratio, city: null }) - 0.6 * weightOf({ local_ratio: ratio, city: 'Tokyo' })) < 1e-9, String(ratio));
+    const n = { city: 0, none: 0 };
+    for (let i = 0; i < 6000; i++) { const list = [{ k: 'city', city: 'Tokyo', local_ratio: 0.5 }, { k: 'none', city: null, local_ratio: 0.5 }]; n[takeWeighted(list).k]++; }
+    assert(n.city > n.none && n.none > 1800, JSON.stringify(n)); // about 62.5% / 37.5%
+    assert(Math.abs(n.none / 6000 - 0.375) < 0.04, JSON.stringify(n));
   });
   await t('localArtist: 0.5+ yes, 0.2 or less no, between and unknown null', async () => {
     resetPool();
@@ -489,10 +510,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       assert.strictEqual(await why({ bitrate: 0 }), 'ok'); // unknown bitrate is judged by the probe
       assert.strictEqual(await why({ tags: 'news,talk' }), 'skip_not_music');
       assert.strictEqual(await why({ tags: 'ニュース' }), 'skip_not_music'); // translated before the blocklist
-      assert.strictEqual(await why({ geo_lat: null, geo_long: null, state: 'Somewhere', name: 'Mystery Rock' }), 'skip_no_city');
+      // No city, and no usable country either: nowhere to put it. (With a country it is kept, at country level: see below.)
+      assert.strictEqual(await why({ geo_lat: null, geo_long: null, countrycode: '', state: 'Somewhere', name: 'Mystery Rock' }), 'skip_no_city');
+      assert.strictEqual(await why({ geo_lat: null, geo_long: null, countrycode: 'ZZ', name: 'Mystery Rock' }), 'skip_no_city');
+      assert.strictEqual(await why({ geo_lat: null, geo_long: null, state: 'Somewhere', name: 'Mystery Rock' }), 'ok');
       const placed = await offlineCheck(st({ geo_lat: null, geo_long: null, state: 'Tokyo Prefecture' }), ctx());
       assert.strictEqual(placed.cand.place.city, 'Tokyo'); assert.strictEqual(placed.cand.place.how, 'state');
       assert.strictEqual((await offlineCheck(st(), ctx())).cand.place.how, 'coords');
+      const country = (await offlineCheck(st({ geo_lat: null, geo_long: null, country: 'Japan', name: 'Some Rock', state: 'Somewhere' }), ctx())).cand.place;
+      assert.strictEqual(country.how, 'country'); assert.strictEqual(country.city, null); assert.strictEqual(country.region, 'Somewhere'); assert.strictEqual(country.countryCode, 'JP');
     });
 
     const cand = (cc, i, how = 'coords', nu) => ({ cc, nu: nu || `${cc}-${i}`, place: { how }, i });
@@ -528,6 +554,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       assert.deepStrictEqual(list.slice(4).map((c) => c.place.how).sort(), ['homepage', 'stream']);
       assert.strictEqual(duplicates, 1); assert.strictEqual(list.length, 6); assert(!list.some((c) => c.i === 7));
       assert.deepStrictEqual(orderCandidates([], {}).list, []);
+      // Stations known only by their country (no city) come after every real-city one.
+      const mixed = orderCandidates([cand('FR', 1, 'country'), cand('FR', 2, 'stream'), cand('FR', 3, 'country'), cand('FR', 4, 'coords')], {}).list.map((c) => c.place.how);
+      assert.deepStrictEqual(mixed, ['coords', 'stream', 'country', 'country']);
     });
 
     console.log('Icecast directory formats');
@@ -601,19 +630,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const vet = require('../lib/vet');
 
   // An in-memory stand-in for Supabase.
-  function fakeDb(initial = []) {
+  function fakeDb(initial = [], { regionColumn = true } = {}) {
     const pool = new Map(initial.map((r) => [r.uuid, { ...r }]));
     const runs = []; const songs = new Map(); const urls = new Map([...pool.values()].map((r) => [r.url, r.uuid]));
     return {
-      pool, runs, songs, upserts: 0,
+      pool, runs, songs, upserts: 0, regionRejected: 0,
       async insert(table, rows) { assert.strictEqual(table, 'scout_runs'); runs.push({ id: runs.length + 1, ...rows[0] }); return [runs[runs.length - 1]]; },
       async patch(path, body) { Object.assign(runs[runs.length - 1], body); },
       async upsert(table, rows) {
         this.upserts++;
         if (table === 'song_lookups') { for (const r of rows) songs.set(r.key, r); return; }
         assert.strictEqual(table, 'station_pool');
+        // Before migration 20261118060000_station_region.sql the table has no region column: PostgREST refuses a row that has one.
+        if (!regionColumn && rows.some((r) => 'region' in r)) {
+          this.regionRejected++;
+          const e = new Error('Supabase POST /station_pool answered 400: ' + "Could not find the 'region' column of 'station_pool' in the schema cache");
+          e.status = 400; e.body = JSON.stringify({ code: 'PGRST204', message: "Could not find the 'region' column of 'station_pool' in the schema cache" });
+          throw e;
+        }
         for (const r of rows) {
-          assert.deepStrictEqual(Object.keys(r).length, 24, 'every column is sent');
+          assert.deepStrictEqual(Object.keys(r).length, regionColumn ? 25 : 24, 'every column is sent');
           const owner = urls.get(r.url);
           if (owner && owner !== r.uuid) throw new Error('duplicate url');
           urls.set(r.url, r.uuid); pool.set(r.uuid, { ...r });
@@ -694,19 +730,52 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         rb(1, { ...none, state: 'Tokyo Prefecture' }),
         rb(2, { ...none, state: '', homepage: 'https://www.radio-osaka.example.jp/', name: 'Kansai Rock' }),
         rb(3, { ...none, state: 'Somewhere', name: 'Mystery Rock', homepage: 'https://mystery.example.jp', tags: 'rock,classic rock' }),
+        rb(4, { ...none, countrycode: '', country: '', state: 'Nowhere', name: 'Lost Rock', homepage: 'https://lost.example.com', tags: 'rock,classic rock' }),
         rb(5, { ...none, tags: 'news,talk', name: 'Talk Without A City' }),
       ],
     }));
     const rows = Object.fromEntries([...db.pool.values()].map((r) => [r.name, r]));
     assert.strictEqual(rows['Station 1'].city, 'Tokyo'); assert.strictEqual(rows['Station 1'].country_code, 'JP');
     assert.strictEqual(rows['Kansai Rock'].city, 'Osaka');
-    assert(!rows['Mystery Rock'], 'no city, no place on the shelf');
-    assert(out.notes.some((n) => n === 'placed_state=1 placed_homepage=1' || n === 'placed_homepage=1 placed_state=1'), out.notes.join(' / '));
-    assert.strictEqual(out.counts.skip_no_city, 1); // only the music station; the talk station is turned away as not music first
+    // No city but a country: kept, placed at the country (city null, the region field as the region), and counted as placed_country.
+    assert(rows['Mystery Rock'], 'a station with a country but no city stays on the shelf');
+    assert.strictEqual(rows['Mystery Rock'].city, null); assert.strictEqual(rows['Mystery Rock'].region, 'Somewhere'); assert.strictEqual(rows['Mystery Rock'].country_code, 'JP');
+    assert.strictEqual(rows['Station 1'].region, null); assert.strictEqual(rows['Kansai Rock'].region, null); // real cities carry no region
+    assert(Math.abs(rows['Mystery Rock'].lat - 35) < 6 && Math.abs(rows['Mystery Rock'].lng - 137) < 8, `${rows['Mystery Rock'].lat},${rows['Mystery Rock'].lng}`); // near Japan's centre
+    assert(!rows['Lost Rock'], 'no usable country: nowhere to put it');
+    assert(out.notes.some((n) => n.split(' ').sort().join(' ') === 'placed_country=1 placed_homepage=1 placed_state=1'), out.notes.join(' / '));
+    assert.strictEqual(out.counts.skip_no_city, 1); // only the music station with no country; the talk station is turned away as not music first
     assert.strictEqual(out.counts.skip_not_music, 1);
     assert(logs.some((l) => /still without a city: 1 /.test(l)), logs.join('\n'));
-    assert(logs.some((l) => l.includes('JP | Somewhere | Mystery Rock | https://mystery.example.jp | rock,classic rock')), logs.join('\n'));
+    assert(logs.some((l) => l.includes('| Nowhere | Lost Rock | https://lost.example.com | rock,classic rock')), logs.join('\n'));
     assert(!logs.some((l) => l.includes('Talk Without A City')));
+  });
+  await t('country-level stations get a region column value; without the column the scout retries without region and says so once', async () => {
+    const none = { geo_lat: null, geo_long: null };
+    const search = async () => [rb(1, { ...none, state: 'Somewhere' }), rb(2, { ...none, state: 'Tokyo Prefecture' }), rb(3, { ...none, state: 'kanagawa ken', name: 'Kanagawa Rock' })];
+    // With the column: region is saved for the country-level station, left empty for the city one.
+    const withCol = fakeDb();
+    await run(base(withCol, { search, fetchYp: async () => '<directory></directory>' }));
+    const a = Object.fromEntries([...withCol.pool.values()].map((r) => [r.name, r]));
+    assert.strictEqual(a['Station 1'].city, null); assert.strictEqual(a['Station 1'].region, 'Somewhere'); assert.strictEqual(a['Station 2'].city, 'Tokyo'); assert.strictEqual(a['Station 2'].region, null);
+    assert.strictEqual(a['Kanagawa Rock'].region, 'Kanagawa Ken'); // title-cased
+    assert.strictEqual(withCol.regionRejected, 0);
+    // Without it (migration not run yet): same stations saved, region left out, one notice, and the batch is not lost.
+    const logs = [];
+    const noCol = fakeDb([], { regionColumn: false });
+    const out = await run(base(noCol, { search, fetchYp: async () => '<directory></directory>', log: (m) => logs.push(m) }));
+    const b = Object.fromEntries([...noCol.pool.values()].map((r) => [r.name, r]));
+    assert(b['Station 1'] && b['Station 2'] && b['Kanagawa Rock'], 'every station still saved');
+    for (const r of noCol.pool.values()) assert(!('region' in r), 'no region key without the column');
+    assert.strictEqual(b['Station 1'].city, null);
+    assert.strictEqual(noCol.regionRejected, 1, 'asked once, then remembered');
+    assert.strictEqual(out.notes.filter((n) => /no region column/.test(n)).length, 1);
+    assert(out.notes.some((n) => /20261118060000_station_region/.test(n)));
+    assert.strictEqual(out.counts.row_refused || 0, 0);
+    // Other errors are not mistaken for a missing column.
+    const badUrl = fakeDb();
+    const out2 = await run(base(badUrl, { search: async () => [rb(1, { ...none, state: 'Somewhere' }), rb(2, { ...none, url_resolved: 'https://s1.test/stream' })], fetchYp: async () => '<directory></directory>' }));
+    assert(!out2.notes.some((n) => /no region column/.test(n)));
   });
   await t('second run: nothing new is added twice; stations are re-checked and gain samples', async () => {
     const plays1 = plays[1];
