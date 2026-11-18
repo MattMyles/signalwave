@@ -10,8 +10,9 @@
 // fits the genres. Songs come from the song_lookups cache; at most 10 new iTunes lookups.
 // Requires a signed-in user whose email is listed in the ADMIN_EMAILS
 // environment variable. Everyone else gets 403 and no data.
-const { serviceEnv, adminEmails, sbHeaders, verifyUser } = require('../lib/supabase-env');
-const { query, sendJson, readJson, bearer } = require('../lib/http');
+const { serviceEnv, sbHeaders } = require('../lib/supabase-env');
+const { requireAdmin } = require('../lib/admin');
+const { query, sendJson, readJson } = require('../lib/http');
 const { forget } = require('../lib/reports');
 const { directoryStats } = require('../lib/radio');
 const { GENRES, STYLES } = require('../lib/config');
@@ -74,11 +75,8 @@ async function reportsFetch(env) {
 }
 
 module.exports = async function handler(req, res) {
-  const user = await verifyUser(bearer(req));
-  if (!user) return sendJson(res, 401, { error: 'Sign in first.' });
-  const admins = adminEmails();
-  if (!admins.length) return sendJson(res, 503, { error: 'No admin set. Add ADMIN_EMAILS in Vercel, then redeploy.' });
-  if (!admins.includes(user.email)) return sendJson(res, 403, { error: 'This account is not allowed to view the dashboard.' });
+  const who = await requireAdmin(req, 'This account is not allowed to view the dashboard.');
+  if (!who.ok) return sendJson(res, who.status, { error: who.error });
 
   const env = serviceEnv();
   if (!env) return sendJson(res, 503, { error: 'Add SUPABASE_SERVICE_ROLE_KEY in Vercel, then redeploy.' });
@@ -154,7 +152,7 @@ module.exports = async function handler(req, res) {
         run: runs[0] || null,
       };
     }
-    sendJson(res, 200, { email: user.email, stats: await r.json(), checks, directory, reports, shelf });
+    sendJson(res, 200, { email: who.user.email, stats: await r.json(), checks, directory, reports, shelf });
   } catch (_) {
     sendJson(res, 502, { error: 'Supabase did not answer. Try again.' });
   }

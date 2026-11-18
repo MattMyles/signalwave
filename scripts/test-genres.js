@@ -443,6 +443,306 @@ const read = (rel) => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
   global.fetch = realFetch;
   for (const [k, v] of [['SUPABASE_URL', saved.u], ['SUPABASE_SERVICE_ROLE_KEY', saved.k]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
 
+  /* ---------- Part 9: negated genre mentions ---------- */
+  console.log('Negated genre mentions');
+  const { LOOKUP } = require('../lib/translate');
+  const shelf = require('../lib/shelf');
+  const negOf = (...texts) => tm.negatedTerms(texts);
+  const playsMain = (main, tags, name = 'Some Station') => { // would the app play this station for a main genre?
+    const spec = vet.resolveGenre(main);
+    const raw = vet.splitTags(tags), tr = translateTags(raw);
+    return vet.isMusicStation(tr, spec.tags) && vet.matchesGenre(tr, spec) && vet.isFocused(raw, name, spec);
+  };
+  const forra = 'all genre on earth except trap, and things like trap, todos los géneros excepto trap y similares';
+  await t("Radio Forra (tags 'all genre on earth except trap' ...) is not Trap, not Rap, not Hip-hop", () => {
+    assert(!accepts('trap', forra, 'Radio Forra'));
+    assert(!accepts('rap', forra, 'Radio Forra'));
+    assert(!playsMain('hiphop', forra, 'Radio Forra')); // "rap" hides inside "trap" in the leftover tag
+    assert(!shelf.qualifyGenres({ rawTags: vet.splitTags(forra), name: 'Radio Forra', samples: [] }).includes('tag:trap'));
+    // even if its songs said trap, a station that negates trap never qualifies for it
+    const songs = [1, 2, 3, 4].map((i) => ({ title: `A - ${i}`, at: i, known: true, fits: ['tag:trap', 'hiphop'], named: ['tag:trap'] }));
+    const keys = shelf.qualifyGenres({ rawTags: vet.splitTags(forra), name: 'Radio Forra', samples: songs });
+    assert(!keys.includes('tag:trap') && keys.includes('hiphop')); // the songs still vouch for Hip-hop itself
+  });
+  await t('negated phrases: everything but metal, no country music, minus, without, sans, ohne, ...', () => {
+    assert(!playsMain('metal', 'everything but metal'));
+    assert(!playsMain('country', 'no country music'));
+    assert(!accepts('trap', 'hip-hop, no trap') && !accepts('trap', 'rap without trap music'));
+    for (const phrase of ['except trap', 'excepting any trap', 'minus the trap', 'sans trap', 'sauf trap', 'excepto trap', 'sem trap', 'ohne trap', 'außer trap', 'senza trap', 'zonder trap', 'utan trap', 'bez trap', 'кроме trap', 'без trap', 'not any more trap music', 'anti trap', 'non trap', 'free of trap', 'other than trap', 'trap-free', 'trap free zone', 'trap-free zone']) {
+      assert(negOf(phrase).has('trap'), phrase);
+      assert(!accepts('trap', `hip-hop, ${phrase}`), phrase);
+    }
+    assert(negOf('everything except jazz and pop').has('jazz') && negOf('everything except jazz and pop').has('pop')); // a list
+    assert(negOf('sin música de baile').has('dance')); // filler words inside the term
+  });
+  await t('innocent phrases are untouched: no copyright sounds, non-stop, nonstop, no ads, anti-flag, nu metal, free jazz, Rock Free Radio', () => {
+    assert(playsMain('rock', 'rock, no copyright sounds'));
+    for (const text of ['non-stop hits', 'nonstop music', 'no ads', 'no talk', 'anti-flag', 'nu metal', 'no. 1 hits', 'rock but pop', 'not only rock', 'free jazz', 'Rock Free Radio', 'sin city', 'sans serif', 'rock without borders']) {
+      assert.strictEqual(negOf(text).size, 0, text);
+    }
+    assert(playsMain('pop', 'non-stop hits, pop'));
+    assert(accepts('nu metal', 'nu metal, metal'));
+    assert(accepts('free jazz', 'free jazz'));
+    assert.deepStrictEqual(translateTags(['non-stop hits', 'rock']), ['non-stop hits', 'rock']);
+  });
+  await t("trap-free zone, hip hop: Hip-hop yes, Trap no; sin reggaeton, salsa: Latin and Salsa yes, Reggaeton no", () => {
+    assert(accepts('hip-hop', 'trap-free zone, hip hop')); // the listener-added hip-hop tag knows "hip hop"
+    assert(playsMain('hiphop', 'trap-free zone, hip-hop'));
+    assert(!accepts('trap', 'trap-free zone, hip hop'));
+    assert(playsMain('latin', 'sin reggaeton, salsa') && accepts('salsa', 'sin reggaeton, salsa'));
+    assert(!accepts('reggaeton', 'sin reggaeton, salsa'));
+  });
+  await t("a translated tag does not turn 'excepto trap' (or 'sin electrónica') into a positive match", () => {
+    const tr = translateTags(['todos los géneros excepto trap y similares']);
+    assert(!tr.includes('trap') && !tr.some((x) => x.includes('trap')));
+    assert(!accepts('trap', 'todos los géneros excepto trap y similares'));
+    assert(!translateTags(['sin electrónica', 'salsa']).includes('electronic'));
+    assert(!translateTags(['ロック以外', '除了摇滚']).includes('rock'));
+    assert(negOf('ロック以外').has('rock') && negOf('除了摇滚').has('rock') && negOf('록 제외').has('rock'));
+    assert(translateTags(['ロック']).includes('rock')); // a plain foreign genre word still translates
+  });
+  await t('a negated main genre rules out its styles; a negated style leaves the main genre', () => {
+    const spec = (k) => (k.startsWith('tag:') ? vet.resolveGenre(null, k.slice(4)) : vet.resolveGenre(k));
+    const n = negOf('no rock');
+    assert(tm.negatesSpec(n, spec('rock')) && tm.negatesSpec(n, spec('tag:classic rock')) && tm.negatesSpec(n, spec('tag:grunge')));
+    assert(!tm.negatesSpec(n, spec('tag:punk rock')) && !tm.negatesSpec(n, spec('punk')) && !tm.negatesSpec(n, spec('metal')));
+    const s = negOf('everything but classic rock');
+    assert(tm.negatesSpec(s, spec('tag:classic rock')) && !tm.negatesSpec(s, spec('rock')) && !tm.negatesSpec(s, spec('tag:hard rock')));
+    assert(playsMain('rock', 'rock, everything but classic rock'));
+  });
+  await t('a several-genres pick narrows: Rock + Trap with a station that negates trap is still Rock', () => {
+    const both = vet.resolveGenres('rock,tag:trap');
+    const tags = 'rock, all genre on earth except trap';
+    assert(vet.isFocused(vet.splitTags(tags), 'X', both)); // rock still fits
+    assert(!vet.isFocused(vet.splitTags('jazz, except trap'), 'X', vet.resolveGenres('tag:trap,tag:rap')));
+    assert.strictEqual(tm.narrowSpec(both, negOf('except trap')).key, 'rock');
+    assert.strictEqual(tm.narrowSpec(both, negOf('except trap and rock')), null);
+  });
+  await t('EVERY genre, style, alias and translation: "everything except X" negates it (nothing is a hand list)', () => {
+    const main = (k) => vet.resolveGenre(k);
+    const style = (k) => vet.resolveGenre(null, k);
+    for (const [key, g] of Object.entries(cfg.GENRES)) {
+      for (const text of [`everything except ${g.label}`, `no ${g.tags[0]} music`, `${g.tags[0]} free zone`, `all genres but ${key}`]) assert(tm.negatesSpec(negOf(text), main(key)), `${key}: ${text}`);
+      assert(!playsMain(key, `everything except ${g.label}`), key);
+      assert(!playsMain(key, `${g.tags[0]}, everything except ${g.label}`), key);
+      for (const st of cfg.STYLES[key]) assert(tm.negatesSpec(negOf(`everything except ${g.label}`), style(st)), `${st} is a style of ${key}`); // a negated main genre takes its styles with it
+    }
+    for (const [key, styles] of Object.entries(cfg.STYLES)) {
+      for (const st of styles) {
+        const neg = negOf(`everything except ${st}`);
+        assert(tm.negatesSpec(neg, style(st)), `style ${st}`);
+        if (!tm.mainNames(key).includes(tm.normName(st))) assert(!tm.negatesSpec(neg, main(key)), `negating ${st} must leave ${key}`);
+        assert(!accepts(st, `${st}, all genre on earth except ${st}`), st);
+        assert(tm.negatesSpec(negOf(`${st} free zone`), style(st)), `${st}-free`);
+      }
+    }
+    for (const [st, list] of Object.entries(cfg.TAG_ALIASES)) {
+      for (const alias of list.filter((a) => !tm.isCompound(a))) assert(tm.negatesSpec(negOf(`sin ${alias}`), style(st)), `alias ${alias} of ${st}`);
+    }
+    // every translation (all languages): negated, never read as the positive genre
+    const canons = new Map();
+    for (const [w, en] of LOOKUP) { if (!canons.has(w)) canons.set(w, []); canons.get(w).push(en); }
+    const english = new Set([...Object.values(cfg.GENRES).flatMap((g) => g.tags), ...Object.keys(cfg.GENRES), ...Object.values(cfg.STYLES).flat(), ...Object.keys(cfg.TAG_ALIASES)].map(tm.normName));
+    let checked = 0;
+    for (const [w, en] of LOOKUP) {
+      if (!english.has(tm.normName(en))) continue; // news, talk and sport words aren't genres
+      const text = /[぀-ヿ㐀-鿿]/.test(w) ? `除了${w.trim()}` : `except ${w.trim()}`;
+      const neg = negOf(text);
+      assert(canons.get(w).some((c) => neg.has(tm.normName(c))) || neg.size > 0, `${JSON.stringify(w)} (${en})`);
+      assert(!translateTags([text]).includes(en), `${JSON.stringify(w)} leaks ${en}`);
+      checked++;
+    }
+    assert(checked > 800, `${checked} translations checked`);
+  });
+  await t('scrubbing: negated words are removed from tags station-wide; tags without negation come back unchanged', () => {
+    assert.deepStrictEqual(tm.scrubTags(['rock', 'jazz']), ['rock', 'jazz']);
+    assert.deepStrictEqual(tm.scrubTags(['all genre on earth except trap', 'and things like trap', 'rap']), ['all genre on earth', 'and things like', 'rap']);
+    assert.deepStrictEqual(tm.scrubTags(['heavy metal', 'except metal']), ['heavy metal']); // "heavy metal" is a different term from "metal"
+  });
+  await t('the shelf: stored genres are dropped when the tags or name negate them (dropNegatedGenres), and the keys are listed for the log', () => {
+    const r = shelf.dropNegatedGenres({ tags: forra, name: 'Radio Forra', genres: ['tag:trap', 'hiphop', 'tag:rap', 'pop'] });
+    assert.deepStrictEqual(r.dropped, ['tag:trap']); assert.deepStrictEqual(r.genres, ['hiphop', 'tag:rap', 'pop']);
+    const m = shelf.dropNegatedGenres({ tags: 'pop', name: 'Everything but Metal', genres: ['metal', 'tag:thrash metal', 'pop'] });
+    assert.deepStrictEqual(m.dropped, ['metal', 'tag:thrash metal']); assert.deepStrictEqual(m.genres, ['pop']);
+    const same = { tags: 'rock,jazz', name: 'X', genres: ['rock'] };
+    assert.deepStrictEqual(shelf.dropNegatedGenres(same), { genres: ['rock'], dropped: [] });
+    const k = shelf.negatedKeys({ tags: forra, name: 'Radio Forra' });
+    assert(k.terms.includes('trap') && k.keys.includes('tag:trap') && !k.keys.includes('hiphop'));
+    assert.deepStrictEqual(shelf.negatedKeys({ tags: 'rock', name: 'Plain' }), { terms: [], keys: [] });
+  });
+  await t('genre counts leave out stations that negate the genre (directory number)', async () => {
+    const { genreCounts, resetCounts } = require('../lib/genrecounts');
+    resetCounts();
+    const mk = (id, tags, name = 'S') => ({ stationuuid: id, name, tags, url_resolved: 'https://x.test/s', countrycode: 'US', geo_lat: 1, geo_long: 1 });
+    const stations = [mk('a', 'trap,hip-hop'), mk('b', 'all genre on earth except trap,and things like trap', 'Radio Forra'), mk('c', 'trap-free zone,hip hop'), mk('d', 'rap')];
+    const search = async ({ tag }) => stations.filter((s) => s.tags.includes(tag));
+    const counts = await genreCounts('hiphop', { search, db: { rpc: async () => { throw new Error('no shelf'); } } });
+    assert.strictEqual(counts['tag:trap'].n, 1); // only station a
+    assert(counts.hiphop.n >= 1);
+  });
+
+  /* ---------- Part 10: certified stations ---------- */
+  console.log('Certified stations');
+  const cert = require('../lib/certified');
+  const mkSt = (n, cc, over = {}) => ({ uuid: `c0000000-0000-4000-8000-00000000000${n}`, name: `Cert FM ${n}`, url: `https://cert${n}.test/s`, tags: ['rock'], genre: 'rock', city: 'X', country: 'Y', countryCode: cc, lat: 1, lng: 2, bitrate: 128, codec: 'MP3', cors: false, ...over });
+  const entry = (n, cc, keys) => ({ uuid: mkSt(n, cc).uuid, keys, station: mkSt(n, cc) });
+  await t('keys are checked against the genres and styles the app knows', () => {
+    assert.deepStrictEqual(cert.validKeys(['rock', 'tag:trap', 'rock', 'tag:classic rock']), { keys: ['rock', 'tag:trap', 'tag:classic rock'], bad: [] });
+    assert.deepStrictEqual(cert.validKeys(['trap', 'tag:not a genre', 'ROCK', 7, null]).keys, []);
+    assert.deepStrictEqual(cert.validKeys(['trap', 'rock']).bad, ['trap']);
+    assert.deepStrictEqual(cert.validKeys('rock'), { keys: [], bad: [] });
+    assert.deepStrictEqual(cert.validKeys([]), { keys: [], bad: [] }); // an empty list is how a certification is removed
+  });
+  await t('the stored station is cleaned: secure stream and a position are required, junk fields dropped', () => {
+    const ok = cert.sanitizeStation({ ...mkSt(1, 'de'), evil: '<script>', name: '  Cert   FM \n 1 ', tags: ['rock', 5, '', 'x'.repeat(100)] });
+    assert.strictEqual(ok.name, 'Cert FM 1'); assert.strictEqual(ok.countryCode, 'DE'); assert(!('evil' in ok)); assert.strictEqual(ok.tags.length, 3);
+    assert.strictEqual(cert.sanitizeStation({ ...mkSt(1, 'DE'), url: 'http://plain.test/s' }), null);
+    assert.strictEqual(cert.sanitizeStation({ ...mkSt(1, 'DE'), lat: 'x' }), null);
+    assert.strictEqual(cert.sanitizeStation({ ...mkSt(1, 'DE'), uuid: 'nope' }), null);
+    assert.strictEqual(cert.sanitizeStation(null), null);
+  });
+  await t('certified-first order: only picked keys, never heard ones, never agreed-wrong ones, regions just heard last', () => {
+    const list = [entry(1, 'DE', ['rock']), entry(2, 'JP', ['rock', 'tag:trap']), entry(3, 'US', ['jazz']), entry(4, 'DE', ['rock']), entry(5, 'BR', ['tag:trap']), entry(6, 'AU', ['rock'])];
+    const id = (n) => mkSt(n, 'DE').uuid;
+    const mid = () => 0.5;
+    let order = cert.orderCertified(list, { keys: ['rock'], exclude: new Set([id(4)]), recent: [], rng: mid });
+    assert.deepStrictEqual(order.map((o) => o.entry.uuid).sort(), [id(1), id(2), id(6)].sort()); // 3 is jazz, 4 was heard, 5 is trap
+    order = cert.orderCertified(list, { keys: ['rock'], exclude: new Set(), recent: ['FR'], rng: mid }); // Europe just heard: DE last
+    const ids = order.map((o) => o.entry.uuid);
+    assert.deepStrictEqual(ids.slice(-2).sort(), [id(1), id(4)].sort()); assert.deepStrictEqual(ids.slice(0, 2).sort(), [id(2), id(6)].sort());
+    order = cert.orderCertified(list, { keys: ['rock', 'tag:trap'], exclude: new Set(), recent: [], rng: mid }); // a station certified for ANY picked key counts
+    assert.deepStrictEqual(order.map((o) => o.entry.uuid).sort(), [id(1), id(2), id(4), id(5), id(6)].sort());
+    assert.strictEqual(order.find((o) => o.entry.uuid === id(5)).key, 'tag:trap');
+    order = cert.orderCertified(list, { keys: ['rock'], exclude: new Set(), reported: (k) => (k === 'rock' ? new Set([id(2)]) : new Set()), rng: mid }); // agreed wrong-genre report for that key
+    assert(!order.some((o) => o.entry.uuid === id(2)));
+    // reported for rock only: still fine for trap
+    order = cert.orderCertified(list, { keys: ['rock', 'tag:trap'], exclude: new Set(), reported: (k) => (k === 'rock' ? new Set([id(2)]) : new Set()), rng: mid });
+    assert(order.some((o) => o.entry.uuid === id(2) && o.key === 'tag:trap'));
+    assert.deepStrictEqual(cert.orderCertified(list, { keys: ['rock'], exclude: new Set(list.map((e) => e.uuid)) }), []); // heard them all: nothing comes first any more
+  });
+  const fakeCertDb = (rows) => ({ async getAll() { return rows; } });
+  const certRow = (n, cc, key) => ({ uuid: mkSt(n, cc).uuid, genre_key: key, station: mkSt(n, cc), certified_by: 'admin@example.com', certified_at: '2026-11-18T00:00:0' + n + 'Z' });
+  await t('certifiedNext: a live certified station for the pick, no song check, dead ones skipped (not deleted), Any never uses it', async () => {
+    cert.resetCertified();
+    const rows = [certRow(1, 'DE', 'tag:trap'), certRow(2, 'JP', 'tag:trap'), certRow(3, 'US', 'rock')];
+    const db = fakeCertDb(rows);
+    const probed = [];
+    const probe = async (url, o) => { probed.push([url, o]); return url.includes('cert1') ? { ok: false, reason: 'http-404' } : { ok: true, bitrate: 192, cors: true }; };
+    const spec = vet.resolveGenre(null, 'trap');
+    const st = await cert.certifiedNext(spec, new Set(), [], { db, probe, reported: () => new Set(), rng: () => 0.5 });
+    assert.strictEqual(st.uuid, mkSt(2, 'JP').uuid); // cert1 is offline, cert3 is rock
+    assert.strictEqual(st.genre, 'trap'); assert.strictEqual(st.bitrate, 192); assert.strictEqual(st.cors, true); assert.strictEqual(st.title, null);
+    assert.deepStrictEqual(st.certifiedFor, ['tag:trap']);
+    assert(probed.every(([, o]) => o.skipMeta === true && o.firstByteMs === 2500), 'liveness only, 2.5 s to first audio');
+    assert.strictEqual(await cert.certifiedNext(spec, new Set([mkSt(2, 'JP').uuid, mkSt(1, 'DE').uuid]), [], { db, probe, reported: () => new Set() }), null); // heard (or dead): the normal search takes over
+    assert.strictEqual(await cert.certifiedNext(null, new Set(), [], { db, probe }), null); // Any
+    assert.strictEqual(await cert.certifiedNext(spec, new Set(), [], { db, probe, reported: () => new Set([mkSt(2, 'JP').uuid, mkSt(1, 'DE').uuid]) }), null); // agreed wrong-genre reports still apply
+    const multi = await cert.certifiedNext(vet.resolveGenres('rock,tag:trap'), new Set(), [], { db, probe, reported: () => new Set(), rng: () => 0 });
+    assert(multi && multi.certifiedFor.length === 1); // certified for any picked key counts
+    assert.deepStrictEqual(await cert.keysFor(mkSt(2, 'JP').uuid, { db }), ['tag:trap']);
+    assert.deepStrictEqual(await cert.keysFor('c0000000-0000-4000-8000-000000000099', { db }), []);
+    cert.resetCertified();
+  });
+  await t('before the migration (no certified_stations table) nothing is certified and nothing breaks', async () => {
+    cert.resetCertified();
+    const db = { async getAll() { const e = new Error('Supabase GET /certified_stations answered 404'); e.status = 404; throw e; } };
+    assert.strictEqual(await cert.certifiedNext(vet.resolveGenre(null, 'trap'), new Set(), [], { db }), null);
+    assert.deepStrictEqual(await cert.keysFor(mkSt(1, 'DE').uuid, { db }), []);
+    cert.resetCertified();
+  });
+  await t('setKeys writes exactly the list: adds, removes the rest, needs a station snapshot only for a first certification', async () => {
+    const calls = [];
+    const db = {
+      async get() { return [{ genre_key: 'rock', station: mkSt(1, 'DE') }, { genre_key: 'tag:trap', station: mkSt(1, 'DE') }]; },
+      async upsert(table, rows) { calls.push(['upsert', table, rows]); },
+      async del(path) { calls.push(['del', decodeURIComponent(path)]); },
+    };
+    const r = await cert.setKeys({ uuid: mkSt(1, 'DE').uuid, keys: ['rock', 'tag:classic rock'], by: 'admin@example.com' }, { db }); // snapshot kept from the first certification
+    assert.deepStrictEqual(r.keys, ['rock', 'tag:classic rock']);
+    assert.deepStrictEqual(calls[0][2].map((x) => x.genre_key), ['rock', 'tag:classic rock']); assert.strictEqual(calls[0][2][0].certified_by, 'admin@example.com');
+    assert.strictEqual(calls[0][2][0].station.name, 'Cert FM 1');
+    assert(calls.some((c) => c[0] === 'del' && c[1].includes('genre_key=eq.tag:trap')) && !calls.some((c) => c[0] === 'del' && c[1].includes('genre_key=eq.rock')));
+    calls.length = 0;
+    await cert.setKeys({ uuid: mkSt(1, 'DE').uuid, keys: [], by: 'a' }, { db }); // removes everything
+    assert.strictEqual(calls.filter((c) => c[0] === 'del').length, 2); assert(!calls.some((c) => c[0] === 'upsert'));
+    const fresh = { ...db, async get() { return []; } };
+    await assert.rejects(() => cert.setKeys({ uuid: mkSt(1, 'DE').uuid, keys: ['rock'], by: 'a' }, { db: fresh }), /secure stream/); // nothing to snapshot
+    cert.resetCertified();
+  });
+
+  // The endpoint: only the admin may certify; anyone may ask what a station is certified for.
+  const certApi = { u: process.env.SUPABASE_URL, k: process.env.SUPABASE_SERVICE_ROLE_KEY, a: process.env.SUPABASE_ANON_KEY, e: process.env.ADMIN_EMAILS };
+  process.env.SUPABASE_URL = 'https://cert-test.supabase.co'; process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-key'; process.env.SUPABASE_ANON_KEY = 'anon-key'; process.env.ADMIN_EMAILS = 'admin@example.com';
+  const writes = [];
+  global.fetch = async (url, init = {}) => {
+    const u = String(url); const j = (json, status = 200) => ({ ok: status < 400, status, json: async () => json, text: async () => JSON.stringify(json) });
+    if (u.includes('/auth/v1/user')) {
+      const tok = String((init.headers || {}).Authorization || '');
+      return tok.includes('admin-token') ? j({ id: 'u1', email: 'Admin@Example.com' }) : tok.includes('user-token') ? j({ id: 'u2', email: 'listener@example.com' }) : j({}, 401);
+    }
+    if (u.includes('/certified_stations')) {
+      if (init.method === 'POST' || init.method === 'DELETE') { writes.push([init.method, u, init.body ? JSON.parse(init.body) : null]); return j(null, 201); }
+      if (u.includes('uuid=eq.')) return j([]);
+      return j([certRow(2, 'JP', 'tag:trap')]);
+    }
+    throw new Error(`unexpected ${u}`);
+  };
+  const callCert = async (method, qs, body, token) => {
+    delete require.cache[require.resolve('../api/certify')];
+    const handler = require('../api/certify');
+    const res = { headers: {}, setHeader(k, v) { this.headers[k] = v; }, end(b) { this.body = b ? JSON.parse(b) : null; } };
+    await handler({ url: `/api/certify${qs}`, method, headers: token ? { authorization: `Bearer ${token}` } : {}, body }, res);
+    return res;
+  };
+  await t('/api/certify: a non-admin or signed-out POST is refused and nothing is written', async () => {
+    cert.resetCertified(); writes.length = 0;
+    const body = { uuid: mkSt(1, 'DE').uuid, keys: ['rock'], station: mkSt(1, 'DE') };
+    assert.strictEqual((await callCert('POST', '', body, null)).statusCode, 401);
+    assert.strictEqual((await callCert('POST', '', body, 'user-token')).statusCode, 403);
+    assert.strictEqual((await callCert('POST', '', body, 'garbage')).statusCode, 401);
+    assert.strictEqual((await callCert('GET', '?all=1', null, 'user-token')).statusCode, 403);
+    assert.strictEqual(writes.length, 0);
+  });
+  await t('/api/certify: ?me=1 says whether to show CERTIFY (true only for the admin)', async () => {
+    assert.deepStrictEqual((await callCert('GET', '?me=1', null, 'admin-token')).body, { admin: true });
+    assert.deepStrictEqual((await callCert('GET', '?me=1', null, 'user-token')).body, { admin: false });
+    assert.deepStrictEqual((await callCert('GET', '?me=1', null, null)).body, { admin: false });
+  });
+  await t('/api/certify: the admin sets keys (validated), a bad key or station is a 400, an empty list removes', async () => {
+    cert.resetCertified(); writes.length = 0;
+    const body = { uuid: mkSt(1, 'DE').uuid, keys: ['rock', 'tag:classic rock'], station: mkSt(1, 'DE') };
+    let r = await callCert('POST', '', body, 'admin-token');
+    assert.strictEqual(r.statusCode, 200); assert.deepStrictEqual(r.body, { ok: true, keys: ['rock', 'tag:classic rock'] });
+    const up = writes.find((w) => w[0] === 'POST');
+    assert.deepStrictEqual(up[2].map((x) => x.genre_key), ['rock', 'tag:classic rock']); assert.strictEqual(up[2][0].certified_by, 'admin@example.com');
+    writes.length = 0;
+    assert.strictEqual((await callCert('POST', '', { ...body, keys: ['rock', 'trap'] }, 'admin-token')).statusCode, 400); // 'trap' is not a key; 'tag:trap' is
+    assert.strictEqual((await callCert('POST', '', { ...body, keys: 'rock' }, 'admin-token')).statusCode, 400);
+    assert.strictEqual((await callCert('POST', '', { ...body, uuid: 'x' }, 'admin-token')).statusCode, 400);
+    assert.strictEqual((await callCert('POST', '', { ...body, station: { ...mkSt(1, 'DE'), url: 'http://x.test/' } }, 'admin-token')).statusCode, 400);
+    assert.strictEqual((await callCert('POST', '', { ...body, keys: Array.from({ length: 13 }, (_, i) => cert.validKeys(['rock', ...require('../lib/songcheck').ALL_KEYS]).keys[i]) }, 'admin-token')).statusCode, 400);
+    assert.strictEqual(writes.length, 0);
+    assert.strictEqual((await callCert('POST', '', { ...body, keys: [] }, 'admin-token')).statusCode, 200);
+  });
+  await t('/api/certify: anyone can ask which genres a station is certified for (cheap, cached a minute); the admin sees the list', async () => {
+    cert.resetCertified();
+    const r = await callCert('GET', `?uuid=${mkSt(2, 'JP').uuid}`, null, null);
+    assert.deepStrictEqual(r.body, { keys: ['tag:trap'] }); assert.strictEqual(r.headers['Cache-Control'], 'public, max-age=60');
+    assert.deepStrictEqual((await callCert('GET', `?uuid=${mkSt(9, 'JP').uuid}`, null, null)).body, { keys: [] });
+    assert.strictEqual((await callCert('GET', '?uuid=nope', null, null)).statusCode, 400);
+    const all = await callCert('GET', '?all=1', null, 'admin-token');
+    assert.strictEqual(all.body.stations.length, 1); assert.deepStrictEqual(all.body.stations[0].keys, ['tag:trap']); assert.strictEqual(all.body.stations[0].name, 'Cert FM 2');
+    assert.strictEqual((await callCert('PUT', '', null, 'admin-token')).statusCode, 405);
+  });
+  global.fetch = realFetch;
+  cert.resetCertified();
+  for (const [k, v] of [['SUPABASE_URL', certApi.u], ['SUPABASE_SERVICE_ROLE_KEY', certApi.k], ['SUPABASE_ANON_KEY', certApi.a], ['ADMIN_EMAILS', certApi.e]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  await t('the admin check is shared by the dashboard and certifying, the route exists, and build 57 / cache v60 are unchanged', () => {
+    assert(/requireAdmin/.test(read('api/admin-stats.js')) && /requireAdmin/.test(read('api/certify.js')));
+    assert(/\/api\/certify/.test(read('server.js')));
+    assert(!/BUILD = '5[89]'/.test(read('public/app.js')) && /signal-wave-v60/.test(read('public/sw.js'))); // still build 57: it isn't live yet
+  });
+
   console.log(failures ? `\n${failures} failed` : '\nAll genre tests passed');
   process.exit(failures ? 1 : 0);
 })();

@@ -49,7 +49,58 @@
     renderShelf(j.shelf);
     renderReports(j.reports);
     show('dash');
+    loadCertified(t);
   }
+
+  /* ---------- Certified stations ----------
+     Stations stamped with the CERTIFY control in the player (admin only). They are served first,
+     for the genres listed, to listeners who haven't heard them. The x on a genre takes that one
+     certification away (the station itself and its other genres stay). */
+  let lastCertified = [];
+  async function loadCertified(t) {
+    const box = $('certified');
+    try {
+      const r = await fetch('/api/certify?all=1', { headers: { Authorization: `Bearer ${t}` }, cache: 'no-store' });
+      if (!r.ok) throw new Error();
+      lastCertified = (await r.json()).stations || [];
+    } catch (_) {
+      box.innerHTML = '<p class="note">Run <span class="mono">supabase/migrations/20261118120000_certified_stations.sql</span> in Supabase to start certifying stations.</p>';
+      return;
+    }
+    renderCertified(lastCertified);
+  }
+  function renderCertified(list) {
+    const box = $('certified');
+    $('certTitle').textContent = `CERTIFIED STATIONS${list.length ? ` · ${list.length}` : ''}`;
+    box.innerHTML = list.length ? `<table>
+      <thead><tr><th>STATION</th><th>CERTIFIED FOR</th><th>BY</th></tr></thead>
+      <tbody>${list.map((x) => `<tr>
+        <td><a href="/?station=${encodeURIComponent(x.uuid)}" target="_blank" rel="noopener" title="Open in the app to listen">${esc(x.name || 'Unnamed station')}</a><br>
+          <span style="color:var(--dim)">${flag(x.countryCode)} ${esc([x.city, x.country].filter(Boolean).join(', '))}</span></td>
+        <td>${x.keys.map((k) => `<span class="mono" style="display:inline-block;margin:2px 6px 2px 0;padding:2px 4px 2px 8px;border:1px solid var(--line);color:var(--yellow)">${esc(genreName(k))}
+          <button class="linkbtn" type="button" data-cert-uuid="${esc(x.uuid)}" data-cert-key="${esc(k)}" title="Remove this certification" aria-label="Remove certification for ${esc(genreName(k))}">✕</button></span>`).join('')}</td>
+        <td class="mono" style="color:var(--dim)">${esc((x.by || '').split('@')[0])}<br>${x.at ? ago(x.at) : ''}</td></tr>`).join('')}</tbody></table>
+      <p class="note">Certified stations play first for their genre, to listeners who haven't heard them yet, with no song check. Certify more from the player (the CERTIFY button under the status line, shown to admins only).</p>`
+      : '<p class="empty">Nothing certified yet. While signed in as the admin, tap CERTIFY under the status line in the player.</p>';
+  }
+  $('certified').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-cert-key]');
+    if (!b) return;
+    const t = await token();
+    if (!t) return show('signin');
+    const st = lastCertified.find((x) => x.uuid === b.dataset.certUuid);
+    if (!st) return;
+    b.disabled = true;
+    try {
+      const r = await fetch('/api/certify', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uuid: st.uuid, keys: st.keys.filter((k) => k !== b.dataset.certKey) }),
+      });
+      if (!r.ok) throw new Error();
+    } catch (_) { b.disabled = false; return; }
+    loadCertified(t);
+  });
 
   /* ---------- Rendering ---------- */
   function render(s) {

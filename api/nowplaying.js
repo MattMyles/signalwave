@@ -18,6 +18,7 @@ const { serviceEnv } = require('../lib/supabase-env');
 const { poolLookup } = require('../lib/pool');
 const { noteSong } = require('../lib/songlog');
 const { isIcecastId } = require('../lib/shelf');
+const { keysFor, snapshotFor } = require('../lib/certified');
 const { query, sendJson } = require('../lib/http');
 
 module.exports = async function handler(req, res) {
@@ -35,6 +36,7 @@ module.exports = async function handler(req, res) {
         try { const s = await stationByUuid(uuid); if (s && s.url_resolved) { url = s.url_resolved; country = s.countrycode; } } catch (e) { directoryError = e; }
       }
       if (!url) { const row = await poolLookup(uuid); if (row) { url = row.url; country = row.country_code; } }
+      if (!url) { const snap = await snapshotFor(uuid); if (snap) { url = snap.url; country = snap.countryCode; } } // a certified station no directory knows
       if (!url) { if (directoryError) throw directoryError; return sendJson(res, 404, { error: 'Station not found.' }); }
       rememberStream(uuid, url, country);
     }
@@ -46,7 +48,10 @@ module.exports = async function handler(req, res) {
     let cache = null;
     if (spec) {
       out.fits = null;
-      if (p.ok) {
+      // Certified for a picked genre: the admin's judgment wins, so no song check can drop it.
+      const certKeys = await keysFor(uuid);
+      if (certKeys.length && (spec.parts || [spec]).some((part) => certKeys.includes(part.key))) { out.fits = true; out.certified = true; }
+      else if (p.ok) {
         const env = serviceEnv();
         cache = env ? makeSongCache(makeDb(env, { timeoutMs: 1500 }), Date.now, { timeoutMs: 1500 }) : null;
         const artists = env ? makeArtistCache(makeDb(env, { timeoutMs: 1500 }), Date.now, { timeoutMs: 1500 }) : null; // MusicBrainz genres on file; never asked for here

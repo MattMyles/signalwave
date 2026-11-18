@@ -130,6 +130,8 @@
     back: [], // stations heard before the current one, for the previous button
     inflight: 0,
     current: null,
+    cert: new Map(), // station id -> the genre keys it is certified for (answers from /api/next, /api/station, /api/certify)
+    isAdmin: false, // set from /api/certify?me=1 when signed in: only the admin sees CERTIFY
     title: null,
     titleSince: 0,
     playedOnce: false, // the current station has actually started playing
@@ -290,6 +292,7 @@
       throw err;
     }
     j.station.foundAt = Date.now(); // client-side: when this station's song was last confirmed
+    if (Array.isArray(j.certified)) state.cert.set(j.station.uuid, j.certified);
     return j.station;
   }
   // A station heard before. Throws a 503 if the selection has nothing else to play.
@@ -595,6 +598,7 @@
     if (!station.egg) hack(false);
     $('terminate').hidden = !station.egg;
     updateGenreFlag();
+    ensureCert(station);
     flyTo(station);
     updateMediaSession();
     renderFavorites();
@@ -1902,6 +1906,39 @@
     const s = state.current;
     $('flagGenre').hidden = !s || Boolean(s.egg) || !state.selected.length;
     $('forgetSignal').hidden = Boolean(s && s.egg);
+    $('certifyBtn').hidden = !(state.isAdmin && s && !s.egg);
+    renderCertTag();
+  }
+
+  /* ---------- Certified stations ----------
+     The admin can stamp the playing station as truly a genre or style (CERTIFY, below); certified
+     stations are served first for that genre. Everyone sees a small CERTIFIED tag beside GENRE when
+     the playing station is certified for a genre they have picked (any genre when on Any). */
+  function renderCertTag() {
+    const s = state.current;
+    const keys = (s && !s.egg && state.cert.get(s.uuid)) || [];
+    $('certTag').hidden = !keys.length || (state.selected.length > 0 && !keys.some((k) => state.selected.includes(k)));
+  }
+  async function ensureCert(s) {
+    if (!s || s.egg || state.cert.has(s.uuid)) return;
+    try {
+      const r = await fetch(`/api/certify?uuid=${encodeURIComponent(s.uuid)}`);
+      const j = r.ok ? await r.json() : null;
+      if (j && Array.isArray(j.keys)) state.cert.set(s.uuid, j.keys);
+    } catch (_) { return; } // the tag is a nicety
+    if (state.current === s) renderCertTag();
+  }
+  async function loadAdmin() {
+    state.isAdmin = false;
+    updateGenreFlag();
+    if (!sb || !user) return;
+    try {
+      const { data } = await sb.auth.getSession();
+      if (!data.session) return;
+      const r = await fetch('/api/certify?me=1', { headers: { Authorization: `Bearer ${data.session.access_token}` }, cache: 'no-store' });
+      state.isAdmin = r.ok && Boolean((await r.json()).admin);
+    } catch (_) { state.isAdmin = false; }
+    updateGenreFlag();
   }
 
   function renderGenres() {
@@ -2282,6 +2319,7 @@
       station: { uuid: s.uuid, name: s.name, city: s.city, countryCode: s.countryCode, genre: s.genre },
     };
     reclass.close(); // an earlier report still waiting for a genre goes out as it is
+    certify.close();
     reclass.open(report); // first, so the keyboard comes up inside the tap
     const blocked = addStrikes(s.uuid, state.selected);
     if (blocked.length) {
@@ -2297,39 +2335,46 @@
      genre and style; the matching is in suggest.js). Not modal, so the player stays usable.
      The report is sent exactly once: with the chosen genre key as `suggested`, or without it
      on SKIP, Esc, after 30 s without typing, or when the app goes to the background. */
-  const reclass = (() => {
-    const IDLE_MS = 30000;
-    const box = $('reclass'), input = $('reclassInput'), list = $('reclassList'), none = $('reclassNone');
-    const entries = window.GenreSuggest
-      ? GenreSuggest.buildEntries(CATALOG, genreLabel, window.GENRE_NAMES || {})
-      : [];
-    let pending = null, timer = 0, shown = [], active = 0;
-    const restartTimer = () => { clearTimeout(timer); timer = setTimeout(() => close(), IDLE_MS); };
+  // The predictive genre list shared by the reclassify and certify sheets: type, see matching genres and
+  // styles (suggest.js), pick one with a tap or Enter. onChoose(match) gets { id, label, parent, via }.
+  const genreEntries = window.GenreSuggest ? GenreSuggest.buildEntries(CATALOG, genreLabel, window.GENRE_NAMES || {}) : [];
+  function makePicker({ input, list, none, prefix, onChoose }) {
+    let shown = [], active = 0;
     function render() {
-      shown = window.GenreSuggest ? GenreSuggest.suggest(input.value, entries, 8) : [];
+      shown = window.GenreSuggest ? GenreSuggest.suggest(input.value, genreEntries, 8) : [];
       active = 0;
       list.innerHTML = '';
       shown.forEach((m, i) => {
         const li = document.createElement('li');
         li.setAttribute('role', 'option');
-        li.id = `rc-${i}`;
+        li.id = `${prefix}-${i}`;
         li.setAttribute('aria-selected', String(i === active));
         li.innerHTML = `<span>${esc(m.label)}</span>${m.parent ? `<span class="rc-parent">· ${esc(m.parent)}</span>` : ''}${m.via ? `<span class="rc-via">${esc(m.via)}</span>` : ''}`;
         // pointerdown + preventDefault keeps the keyboard up and picks on the first tap.
-        li.addEventListener('pointerdown', (e) => { e.preventDefault(); choose(m); });
+        li.addEventListener('pointerdown', (e) => { e.preventDefault(); onChoose(m); });
         list.appendChild(li);
       });
       none.hidden = !(input.value.trim() && !shown.length);
       input.setAttribute('aria-expanded', String(shown.length > 0));
-      if (shown.length) input.setAttribute('aria-activedescendant', 'rc-0'); else input.removeAttribute('aria-activedescendant');
+      if (shown.length) input.setAttribute('aria-activedescendant', `${prefix}-0`); else input.removeAttribute('aria-activedescendant');
     }
     function move(d) {
       if (!shown.length) return;
       active = (active + d + shown.length) % shown.length;
       [...list.children].forEach((li, i) => li.setAttribute('aria-selected', String(i === active)));
-      input.setAttribute('aria-activedescendant', `rc-${active}`);
+      input.setAttribute('aria-activedescendant', `${prefix}-${active}`);
       list.children[active].scrollIntoView({ block: 'nearest' });
     }
+    const pick = () => { if (shown[active]) { onChoose(shown[active]); return true; } return false; };
+    return { render, move, pick };
+  }
+
+  const reclass = (() => {
+    const IDLE_MS = 30000;
+    const box = $('reclass'), input = $('reclassInput');
+    let pending = null, timer = 0;
+    const restartTimer = () => { clearTimeout(timer); timer = setTimeout(() => close(), IDLE_MS); };
+    const picker = makePicker({ input, list: $('reclassList'), none: $('reclassNone'), prefix: 'rc', onChoose: (m) => choose(m) });
     function finish(suggested) {
       const report = pending;
       pending = null;
@@ -2345,23 +2390,111 @@
     function open(report) {
       pending = report;
       input.value = '';
-      render();
+      picker.render();
       box.hidden = false;
       input.focus();
       restartTimer();
     }
     function close() { finish(null); }
-    input.addEventListener('input', () => { render(); restartTimer(); });
+    input.addEventListener('input', () => { picker.render(); restartTimer(); });
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
-      else if (e.key === 'Enter') { e.preventDefault(); if (shown[active]) choose(shown[active]); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); picker.move(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); picker.move(-1); }
+      else if (e.key === 'Enter') { e.preventDefault(); picker.pick(); }
       else if (e.key === 'Escape') { e.preventDefault(); close(); }
       else restartTimer();
     });
     $('reclassSkip').addEventListener('click', close);
     // Leaving the app: don't lose the report.
     document.addEventListener('visibilitychange', () => { if (document.hidden && pending) close(); });
+    return { open, close };
+  })();
+
+  /* ---------- Certify sheet (admin only) ----------
+     CERTIFY under the status line: stamp the playing station for one or more genres or styles with the
+     same predictive picker. Picked genres are chips (✕ removes one); keys it is already certified for come
+     pre-filled, so the same sheet edits and removes certifications. CERTIFY saves the exact list through
+     /api/certify (the server checks the admin again); CANCEL changes nothing. */
+  const certify = (() => {
+    const box = $('certify'), input = $('certifyInput'), chips = $('certifyChips'), save = $('certifySave');
+    let target = null, picked = [], original = [];
+    const same = () => picked.length === original.length && picked.every((k) => original.includes(k));
+    const picker = makePicker({ input, list: $('certifyList'), none: $('certifyNone'), prefix: 'cf', onChoose: (m) => {
+      if (!picked.includes(m.id) && picked.length < 12) picked.push(m.id);
+      input.value = '';
+      picker.render();
+      renderChips();
+    } });
+    function renderChips() {
+      chips.innerHTML = '';
+      for (const k of picked) {
+        const li = document.createElement('li');
+        const label = document.createElement('span');
+        label.textContent = genreLabel(k);
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.textContent = '✕';
+        x.setAttribute('aria-label', `Remove ${genreLabel(k)}`);
+        x.addEventListener('pointerdown', (e) => e.preventDefault()); // keep the keyboard up
+        x.addEventListener('click', () => { picked = picked.filter((p) => p !== k); renderChips(); });
+        li.append(label, x);
+        chips.appendChild(li);
+      }
+      save.disabled = same();
+      save.textContent = !picked.length && original.length ? 'REMOVE CERTIFICATION' : 'CERTIFY';
+    }
+    async function open() {
+      const s = state.current;
+      if (!s || s.egg || !state.isAdmin) return;
+      reclass.close(); // a report still waiting for a genre goes out as it is
+      target = { uuid: s.uuid, name: s.name, station: { uuid: s.uuid, name: s.name, url: s.url, homepage: s.homepage || null, favicon: s.favicon, tags: s.tags, genre: s.genre, city: s.city, region: s.region, country: s.country, countryCode: s.countryCode, lat: s.lat, lng: s.lng, bitrate: s.bitrate, codec: s.codec, cors: s.cors } };
+      original = (state.cert.get(s.uuid) || []).slice();
+      picked = original.slice();
+      $('certifySub').textContent = `${String(s.name).toUpperCase()} // STAMP IT FOR WHAT IT TRULY IS. NEW LISTENERS HEAR IT FIRST.`;
+      input.value = '';
+      picker.render();
+      renderChips();
+      box.hidden = false;
+      input.focus();
+      // What the server has now (this device may not know about another device's stamp).
+      try {
+        const r = await fetch(`/api/certify?uuid=${encodeURIComponent(s.uuid)}`, { cache: 'no-store' });
+        const j = r.ok ? await r.json() : null;
+        if (j && Array.isArray(j.keys) && target && target.uuid === s.uuid && same()) { state.cert.set(s.uuid, j.keys); original = j.keys.slice(); picked = j.keys.slice(); renderChips(); }
+      } catch (_) { /* the pre-filled list is what this device knew */ }
+    }
+    function close() { box.hidden = true; input.blur(); target = null; }
+    async function commit() {
+      if (!target || same()) return;
+      const t = target, keys = picked.slice();
+      save.disabled = true;
+      let ok = false, reason = '';
+      try {
+        const { data } = await sb.auth.getSession();
+        const r = await fetch('/api/certify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session ? data.session.access_token : ''}` },
+          body: JSON.stringify({ uuid: t.uuid, keys, station: t.station }),
+        });
+        ok = r.ok;
+        if (!ok) reason = ((await r.json().catch(() => ({}))).error || '').toUpperCase();
+      } catch (_) { reason = 'NO CONNECTION'; }
+      if (!ok) { toast(`> CERTIFICATION FAILED${reason ? ` // ${reason}` : ''}`); save.disabled = same(); return; }
+      state.cert.set(t.uuid, keys);
+      toast(keys.length ? `> NESE CERTIFIED: ${keys.map((k) => genreLabel(k).toUpperCase()).join(' + ')}` : '> NESE CERTIFICATION REMOVED');
+      close();
+      renderCertTag();
+    }
+    input.addEventListener('input', () => picker.render());
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); picker.move(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); picker.move(-1); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (!picker.pick() && !input.value.trim()) commit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(); }
+    });
+    save.addEventListener('click', commit);
+    $('certifyCancel').addEventListener('click', close);
+    $('certifyBtn').addEventListener('click', open);
     return { open, close };
   })();
   document.addEventListener('keydown', (e) => {
@@ -2513,6 +2646,7 @@
     user = u || null;
     renderAccount();
     if (changed) { nese = null; renderNese(); }
+    if (changed) loadAdmin();
     if (user && changed) { pull(); loadNese(); }
   }
 

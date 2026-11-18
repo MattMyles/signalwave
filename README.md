@@ -127,6 +127,9 @@ Set it up once:
    server uses. Build 57 adds `supabase/migrations/20261118100000_genre_judging.sql`
    (MusicBrainz artist cache, the reclassify suggestion column and the untagged-station
    rule); the app works without it but the new checks and "verified" counts need it.
+   Build 57 also adds `supabase/migrations/20261118120000_certified_stations.sql`
+   (the admin's CERTIFY stamp: certified stations are served first for their genre;
+   nothing is certified until it is run).
    The shelf also needs `SUPABASE_SERVICE_ROLE_KEY` in Vercel (already
    set if the dashboard works).
 2. **Add two GitHub repository secrets** (repo → Settings → Secrets and variables →

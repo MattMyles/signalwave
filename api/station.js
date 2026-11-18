@@ -7,6 +7,7 @@ const { probeStream } = require('../lib/icy');
 const { rememberStream, splitTags } = require('../lib/vet');
 const { poolLookup } = require('../lib/pool');
 const { isIcecastId } = require('../lib/shelf');
+const { keysFor } = require('../lib/certified');
 const { query, sendJson } = require('../lib/http');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -36,6 +37,7 @@ async function sendShelfStation(res, row) {
       lastSong: p.ok && p.title ? p.title : null,
       live: Boolean(p.ok),
     },
+    certified: await keysFor(row.uuid),
   }, 300);
 }
 
@@ -93,5 +95,6 @@ module.exports = async function handler(req, res) {
       lastSong: p.ok && p.title ? p.title : null,
       live: Boolean(p.ok),
     },
+    certified: await keysFor(row.uuid),
   }, 300);
 };

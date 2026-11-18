@@ -113,7 +113,9 @@ What the app says today, so it's clear what the lore would change. File names ar
 - > GREETINGS FROM KRYX
 - > DON'T HANG THE DJ!
 
-**Now-playing panel** (`public/index.html`): labels NOW PLAYING · SIGNAL (the station name) · GENRE · CITY · COUNTRY (when a station's city can't be determined, the CITY value is a static-interference effect reading **CITY DATA CORRUPTED**, and COUNTRY shows its state or province first when it lists one, like "Indiana, United States"); small buttons WRONG GENRE? (when genres are picked) and FORGET SIGNAL; a LAST 5 tab on the right edge opens TRACK LOG // LAST 5.
+**Now-playing panel** (`public/index.html`): labels NOW PLAYING · SIGNAL (the station name) · GENRE · CITY · COUNTRY (when a station's city can't be determined, the CITY value is a static-interference effect reading **CITY DATA CORRUPTED**, and COUNTRY shows its state or province first when it lists one, like "Indiana, United States"); small buttons WRONG GENRE? (when genres are picked), CERTIFY (admin only: Matt's NESE stamp) and FORGET SIGNAL; a small **✓ CERTIFIED** tag beside GENRE when the NESE has certified the playing signal for a genre you picked; a LAST 5 tab on the right edge opens TRACK LOG // LAST 5.
+
+**Certify sheet** (`public/index.html`, admin only, after the reclassify sheet): > CERTIFY SIGNAL · <STATION NAME> // STAMP IT FOR WHAT IT TRULY IS. NEW LISTENERS HEAR IT FIRST. · TYPE A GENRE_ · > NO SUCH GENRE ON FILE · CANCEL ✕ · CERTIFY (REMOVE CERTIFICATION when every genre was taken off); toasts > NESE CERTIFIED: <GENRE> + <GENRE>, > NESE CERTIFICATION REMOVED, > CERTIFICATION FAILED // <REASON>
 
 **Status line** (`public/app.js`): > SCANNING FREQUENCIES… · > LINK ESTABLISHED // 128 kbps MP3 · > SIGNAL LOST — RETUNING… · > SIGNAL STALLED · > STILL SCANNING — WIDENING SEARCH… · > RETUNING TO SAVED SIGNAL… · > RESUMING LAST SIGNAL… · > LINK PAUSED · > TAP PLAY TO START AUDIO · > WRONG GENRE REPORTED — RETUNING… · > SIGNAL BLOCKED FOR <GENRE> — RETUNING… (the tenth WRONG GENRE? strike on one signal for one genre; also shown as a toast) · > SIGNAL FORGOTTEN — RETUNING… · > SHARED SIGNAL RECEIVED · > GLOBE OFFLINE — AUDIO ONLY
 

@@ -14,6 +14,9 @@
     },
     "api/station.js": {
       "maxDuration": 15
+    },
+    "api/certify.js": {
+      "maxDuration": 15
     }
   },
   "crons": [

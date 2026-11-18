@@ -418,6 +418,30 @@ button:focus-visible, label:focus-visible, input:focus-visible {
 .reclass-list .rc-via { margin-left: auto; color: var(--dim); font-family: var(--font-mono); font-size: 11px; font-weight: 400; }
 .reclass-none { margin: 0; font-size: 12px; color: var(--magenta); }
 
+/* CERTIFY SIGNAL (admin): the same sheet in yellow, with the picked genres as chips and a CERTIFY button. */
+.certify { border-color: var(--yellow); box-shadow: 0 0 18px rgba(252, 238, 10, 0.28); }
+.certify h2 { color: var(--yellow); }
+.certify-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.certify-chips:empty { display: none; }
+.certify-chips li {
+  display: inline-flex; align-items: center; gap: 2px; min-height: 32px; padding: 0 2px 0 10px; border: 1px solid var(--yellow);
+  background: rgba(252, 238, 10, 0.1); color: var(--yellow); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.certify-chips button { min-width: 32px; min-height: 32px; border: 0; background: none; color: var(--yellow); font-size: 13px; }
+.certify-chips button:hover, .certify-chips button:focus-visible { color: #000; background: var(--yellow); }
+.certify-save {
+  min-height: 44px; border: 1px solid var(--yellow); background: var(--yellow); color: #000;
+  font-size: 13px; font-weight: 700; letter-spacing: 0.18em;
+}
+.certify-save:disabled { background: none; color: var(--dim); border-color: var(--line); }
+.certify-btn:hover { color: var(--yellow); }
+/* The CERTIFIED tag beside GENRE: small, steady, no animation. */
+.cert-tag {
+  margin-left: 6px; padding: 1px 5px; border: 1px solid var(--yellow); color: var(--yellow);
+  font-size: 9px; letter-spacing: 0.14em; font-weight: 700; white-space: nowrap; vertical-align: 1px;
+  text-shadow: 0 0 6px rgba(252, 238, 10, 0.5);
+}
+
 /* Controls */
 .controls { display: grid; grid-template-columns: 56px 56px 56px 1fr; gap: 10px; }
 .ctl {

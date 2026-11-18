@@ -461,7 +461,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     }).listen(0);
     const base = `http://127.0.0.1:${srv.address().port}`;
     const real = global.fetch;
+    let certRows = []; // certified_stations, for the certified test below
     global.fetch = async (u) => { // Apple's catalog, and a song cache that is down
+      if (String(u).includes('/certified_stations')) return { ok: true, status: 200, json: async () => certRows, text: async () => JSON.stringify(certRows) };
       if (String(u).includes('itunes.apple.com')) {
         const term = new URL(u).searchParams.get('term');
         const hit = /Holiday/.test(term) ? [{ artistName: 'Madonna', trackName: 'Holiday', primaryGenreName: 'Pop', releaseDate: '1983-09-07T00:00:00Z' }] : [];
@@ -485,6 +487,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const bad = await ask(0, '&genres=tag:classic%20rock');
       assert.strictEqual(bad.ok, true); assert.strictEqual(bad.title, 'Madonna - Holiday'); assert.strictEqual(bad.fits, false);
       assert.strictEqual((await ask(0, '&genres=rock,pop')).fits, true);
+    });
+    await t('a station certified for a picked genre is never dropped by the song check (the admin\'s judgment wins)', async () => {
+      const { resetCertified } = require('../lib/certified');
+      const uuid = 'b0000000-0000-4000-8000-000000000300'; // plays Madonna - Holiday: Apple says Pop, so Classic Rock is a clear mismatch
+      assert.strictEqual((await ask(0, '&genres=tag:classic%20rock')).fits, false);
+      certRows = [{ uuid, genre_key: 'tag:classic rock', station: { uuid, name: 'Certified FM', url: `${base}/Madonna%20-%20Holiday`, lat: 1, lng: 2 }, certified_by: 'admin@example.com', certified_at: '2026-11-18T00:00:00Z' }];
+      resetCertified();
+      const ok = await ask(0, '&genres=tag:classic%20rock');
+      assert.strictEqual(ok.fits, true); assert.strictEqual(ok.certified, true); assert.strictEqual(ok.title, 'Madonna - Holiday');
+      assert.strictEqual((await ask(0, '&genres=jazz')).fits, false); // certified for a different genre than the pick: judged as usual
+      assert.strictEqual((await ask(0, '&genres=jazz,tag:classic%20rock')).fits, true); // any picked key counts
+      certRows = []; resetCertified();
     });
     await t('with genres, a song Apple does not know or no title gives fits null', async () => {
       assert.strictEqual((await ask(1, '&genres=rock')).fits, null);
@@ -1203,6 +1217,67 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     assert(names.includes('Recent Berlin') && names.includes('NZ Rock 0') && names.includes('NZ Rock 1'), names.join());
     assert.strictEqual(out.checked, 4); // 3 new + the shelf station re-checked
     assert.strictEqual([...db.pool.values()].find((r) => r.name === 'JP Rock 0').ok_count, 3);
+  });
+  await t('negation: the scout sweeps the shelf, dropping genre keys a station\'s own words rule out, and counts negated stations in the full list', async () => {
+    const forra = { ...onShelf(fullStation('DE', 50, { name: 'Radio Forra' })), tags: 'all genre on earth except trap,and things like trap,todos los géneros excepto trap y similares', genres: ['tag:trap', 'hiphop', 'pop'] };
+    const metalNot = { ...onShelf(fullStation('DE', 51, { name: 'Everything but Metal' })), tags: 'pop,hits', genres: ['metal', 'tag:thrash metal', 'pop'] };
+    const fine = { ...onShelf(fullStation('DE', 52, { name: 'Plain Rock' })), tags: 'rock,no copyright sounds', genres: ['rock'] };
+    const db = fakeDb([forra, metalNot, fine]);
+    const patches = [];
+    const plainGetAll = db.getAll.bind(db);
+    db.getAll = async (path) => (path.includes('select=uuid,name,tags,genres') ? [...db.pool.values()].map((r) => ({ uuid: r.uuid, name: r.name, tags: r.tags, genres: r.genres })) : plainGetAll(path));
+    const runPatch = db.patch.bind(db);
+    db.patch = async (path, body) => { if (path.startsWith('/station_pool?uuid=eq.')) { patches.push([decodeURIComponent(path.split('eq.')[1]), body]); db.pool.get(decodeURIComponent(path.split('eq.')[1])).genres = body.genres; return; } return runPatch(path, body); };
+    const logs = [];
+    const listed = [fullStation('DE', 70, { name: 'Radio Forra 2', tags: 'all genre on earth except trap' }), fullStation('DE', 71, { name: 'Trap-free Zone', tags: 'trap-free zone,hip hop' }), fullStation('DE', 72, { name: 'Normal', tags: 'rock,non-stop hits' })];
+    const out = await run({ ...base(db), log: (m) => logs.push(m), loadFull: loaded(listed), fetchYp: async () => '', search: async () => [], probe: fakeProbe });
+    // the sweep's own updates (the re-check that follows may judge the rows again, e.g. Forra's tags qualify nothing at all)
+    assert.deepStrictEqual(patches.map(([id, body]) => [id, body.genres]).sort(), [[forra.uuid, ['hiphop', 'pop']], [metalNot.uuid, ['pop']]].sort());
+    assert(!db.pool.get(forra.uuid).genres.includes('tag:trap') && !db.pool.get(metalNot.uuid).genres.includes('metal'));
+    assert.deepStrictEqual(db.pool.get(fine.uuid).genres, ['rock']);
+    assert.strictEqual(out.counts.negation_sweep_rows, 2); assert.strictEqual(out.counts.negation_sweep_keys, 3);
+    assert.strictEqual(out.counts.negated_stations, 2);
+    const notes = db.runs[0].notes;
+    assert(/negation sweep: checked 3 shelf rows, fixed 2 stations \(3 genre keys dropped\)/.test(notes), notes);
+    assert(/negated genre mentions: 2 of 3 stations/.test(notes), notes);
+    const sample = logs.find((m) => /Negated genre mentions, 2 examples/.test(m));
+    assert(sample && /Radio Forra 2 \| DE \| trap -> .*tag:trap/.test(sample) && /Trap-free Zone/.test(sample), String(sample));
+    assert(notes.length <= 1500);
+    // a second run has nothing left to fix
+    const again = await run({ ...base(db), loadFull: loaded(listed), fetchYp: async () => '', search: async () => [], probe: fakeProbe });
+    assert(!again.counts.negation_sweep_rows);
+    assert(/fixed 0 stations/.test(db.runs[1].notes));
+  });
+  await t('the sweep never touches rows that do not change, respects its cap, and survives a failing update', async () => {
+    const { sweepNegated } = require('../scripts/scout');
+    const rows = Array.from({ length: 5 }, (_, i) => ({ uuid: `u${i}`, name: 'Everything but Metal', tags: 'pop', genres: ['metal', 'pop'] })).concat([{ uuid: 'ok', name: 'Metal FM', tags: 'metal', genres: ['metal'] }, { uuid: 'untagged', name: 'X', tags: null, genres: [] }]);
+    const done = [];
+    const db = { getAll: async () => rows, patch: async (path, body) => { if (path.includes('u1')) throw new Error('nope'); done.push([path, body]); } };
+    const r = await sweepNegated(db, { max: 4 });
+    assert.deepStrictEqual({ checked: r.checked, rows: r.rows, keys: r.keys, failed: r.failed }, { checked: 7, rows: 3, keys: 3, failed: 1 });
+    assert(done.every(([, b]) => b.genres.length === 1 && b.genres[0] === 'pop'));
+    assert(!done.some(([p]) => /ok|untagged/.test(p)));
+  });
+  await t('poolNext skips shelf rows whose own words negate the pick (rows judged before the rule existed)', async () => {
+    const { negatesPick } = require('../lib/pool');
+    const real = global.fetch;
+    resetPool();
+    const forraRow = row({ uuid: 'a0000000-0000-4000-8000-0000000000f1', name: 'Radio Forra', tags: 'all genre on earth except trap,and things like trap', genres: ['tag:trap'], url: 'https://stream.test/forra' });
+    const goodRow = row({ uuid: 'a0000000-0000-4000-8000-0000000000f2', name: 'Trap Nation', tags: 'trap,hip-hop', genres: ['tag:trap'], url: 'https://stream.test/good' });
+    const trapSpec = resolveGenre(null, 'trap');
+    assert(negatesPick(forraRow, trapSpec) && !negatesPick(goodRow, trapSpec) && !negatesPick(forraRow, null));
+    // a several-genres pick: only negated when every part the row is listed for is negated
+    const both = resolveGenres('rock,tag:trap');
+    assert(negatesPick(forraRow, both)); // listed for trap only
+    assert(!negatesPick({ ...forraRow, genres: ['tag:trap', 'rock'] }, both)); // also listed for rock: still fine for rock
+    mockShelf((u) => (u.includes('pool_candidates') ? { json: [forraRow, goodRow] } : { json: null }));
+    const probed = [];
+    const s = await poolNext(trapSpec, new Set(), [], { probe: async (url) => { probed.push(url); return { ok: true, bitrate: 128, cors: false, title: 'A - B' }; }, songFits: async () => null });
+    assert.strictEqual(s.uuid, goodRow.uuid); assert(!probed.some((u) => u.includes('forra')), 'Forra is not even probed');
+    mockShelf((u) => (u.includes('pool_candidates') ? { json: [forraRow] } : { json: null }));
+    assert.strictEqual(await poolNext(trapSpec, new Set(), [], { probe: okProbe, songFits: async () => null }), null); // nothing left: the live path takes over
+    global.fetch = real;
+    resetPool();
   });
   await t('no full list (missing or failing): the old rotating keyword searches run', async () => {
     for (const loadFull of [async () => null, async () => { throw new Error('boom'); }]) {

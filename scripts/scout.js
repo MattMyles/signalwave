@@ -57,6 +57,7 @@ const DEFAULTS = {
   chunk: 64,             // stations probed per step
   concurrency: 16,       // streams probed at once
   probeOpts: { firstByteMs: 6000, totalMs: 10000 }, // patient: the live path allows 4 s and 6 s
+  sweepMax: 2000,        // shelf rows the negation sweep may fix per run
   itunesSpacingMs: 4000, // iTunes allows about 20 requests a minute; stay at 15
   itunesMax: 250,        // new iTunes lookups per run
   itunesPerChunk: 14,
@@ -110,6 +111,28 @@ function defaults() {
   };
 }
 
+/**
+ * Drops from every shelf row the genre keys its name or tags negate. Pages through station_pool
+ * (only uuid, name, tags, genres), then patches the rows that change. No network beyond Supabase.
+ * -> { checked, rows (stations fixed), keys (genre keys dropped), failed }
+ */
+async function sweepNegated(db, { max = 2000, stopped = () => false, log = () => {} } = {}) {
+  const rows = await db.getAll('/station_pool?select=uuid,name,tags,genres&status=eq.active&order=uuid');
+  const out = { checked: rows.length, rows: 0, keys: 0, failed: 0 };
+  for (const r of rows) {
+    if (!r || !Array.isArray(r.genres) || !r.genres.length) continue;
+    const { genres, dropped } = shelf.dropNegatedGenres(r);
+    if (!dropped.length) continue;
+    if (out.rows + out.failed >= max || stopped()) break;
+    try {
+      await db.patch(`/station_pool?uuid=eq.${encodeURIComponent(r.uuid)}`, { genres });
+      out.rows++; out.keys += dropped.length;
+      if (out.rows <= 10) log(`  Sweep: ${String(r.name || '').slice(0, 50)} no longer on the shelf for ${dropped.join(', ')}`);
+    } catch (e) { out.failed++; }
+  }
+  return out;
+}
+
 async function run(overrides = {}) {
   const D = { ...defaults(), ...DEFAULTS, ...overrides };
   if (overrides.artistCountry && !overrides.artistInfo) D.artistInfo = null;
@@ -150,6 +173,15 @@ async function run(overrides = {}) {
     const shelfCounts = {}; // active stations per country
     for (const r of index) if (r.status === 'active' && r.country_code) { const cc = String(r.country_code).toUpperCase(); shelfCounts[cc] = (shelfCounts[cc] || 0) + 1; }
     log(`Shelf has ${index.length} stations on file in ${Object.keys(shelfCounts).length} countries.`);
+
+    /* ---------- 0. Sweep: genres the stations' own words rule out ---------- */
+    // A station that says what it is NOT ("all genre on earth except trap") must never be served
+    // for that genre, whatever judged it before. Offline: reads the shelf, patches only rows that change.
+    try {
+      const sw = await sweepNegated(db, { max: D.sweepMax, stopped, log });
+      if (sw.rows) { bump('negation_sweep_rows', sw.rows); bump('negation_sweep_keys', sw.keys); }
+      note(`negation sweep: checked ${sw.checked} shelf rows, fixed ${sw.rows} stations (${sw.keys} genre keys dropped)${sw.failed ? `, ${sw.failed} updates failed` : ''}`);
+    } catch (e) { note(`negation sweep skipped (${e.message})`); }
 
     /* ---------- 1. Discover ---------- */
     const discoverEnd = t0 + D.budgetMs * D.discoverShare;
@@ -209,9 +241,17 @@ async function run(overrides = {}) {
     const unplaced = []; // sample of music stations that still have no city
     let unplacedSeen = 0;
     let evaluated = 0;
+    let negatedSeen = 0;
+    const negatedExamples = []; // "name | country | negated words -> keys", the first 20
     for (const s of source.values()) {
       if (stopped() || D.now() > discoverEnd + 120000) { note(`offline checks cut short after ${evaluated} of ${source.size}`); break; }
       evaluated++;
+      // Stations whose name or tags negate a genre ("everything but metal"): counted here so the log shows what is being caught.
+      const ng = shelf.negatedKeys({ tags: s.tags, name: s.name });
+      if (ng.terms.length) {
+        negatedSeen++;
+        if (negatedExamples.length < 20) negatedExamples.push(`${String(s.name || '').replace(/\s+/g, ' ').trim().slice(0, 50)} | ${s.countrycode || '??'} | ${ng.terms.join(',')} -> ${ng.keys.join(',') || 'no key'}`);
+      }
       const r = await scoutlist.offlineCheck(s, ctx);
       if (r.skip) {
         bump(r.skip);
@@ -299,6 +339,10 @@ async function run(overrides = {}) {
     } catch (e) {
       note(`Icecast directory unavailable (${e.message})`);
     }
+
+    bump('negated_stations', negatedSeen);
+    note(`negated genre mentions: ${negatedSeen} of ${evaluated} stations checked offline (e.g. "all genre on earth except trap")`);
+    if (negatedExamples.length) log(`  Negated genre mentions, ${negatedExamples.length} examples (name | country | negated words -> genre keys):\n    ${negatedExamples.join('\n    ')}`);
 
     // Fair order: country by country, fewest on the shelf first.
     const ordered = scoutlist.orderCandidates(pool, shelfCounts, { max: D.maxNew, cap: D.perCountryCap });
@@ -553,4 +597,4 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { run, makeSongCache, DEFAULTS };
+module.exports = { run, sweepNegated, makeSongCache, DEFAULTS };

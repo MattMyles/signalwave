@@ -74,7 +74,7 @@
 
       <dl class="meta">
         <div><dt>SIGNAL</dt><dd><span class="scroll" id="station">—</span></dd></div>
-        <div><dt>GENRE</dt><dd><span class="scroll" id="genre">—</span></dd></div>
+        <div><dt>GENRE <span class="cert-tag" id="certTag" title="The NESE has certified this signal for the genre you picked" hidden>✓ CERTIFIED</span></dt><dd><span class="scroll" id="genre">—</span></dd></div>
         <div><dt>CITY</dt><dd><span class="scroll" id="city">—</span></dd></div>
         <div><dt>COUNTRY</dt><dd><span class="scroll" id="country">—</span></dd></div>
       </dl>
@@ -83,6 +83,7 @@
       <div class="statusline mono" id="statusline"><span class="scroll" id="statusText">&gt; SYSTEM READY</span></div>
       <div class="flags">
         <button class="flag" id="flagGenre" title="Not the genre you picked? Skip it and report it so it isn't played for this genre again" hidden>WRONG GENRE?</button>
+        <button class="flag certify-btn" id="certifyBtn" title="Admin: certify this station for the genres it truly is" hidden>CERTIFY</button>
         <button class="flag" id="forgetSignal" title="Skip this station and never play it on this device again">FORGET SIGNAL</button>
       </div>
       <button class="terminate" id="terminate" hidden>TERMINATE REMOTE USER</button>
@@ -271,6 +272,21 @@
       placeholder="TYPE A GENRE_" aria-label="Genre the song really is" role="combobox" aria-expanded="false" aria-controls="reclassList" aria-autocomplete="list">
     <ul class="reclass-list" id="reclassList" role="listbox" aria-label="Matching genres"></ul>
     <p class="reclass-none mono" id="reclassNone" hidden>&gt; NO SUCH GENRE ON FILE</p>
+  </section>
+
+  <!-- CERTIFY SIGNAL (admins only): the same genre picker as above, to stamp the playing station for one or more genres. -->
+  <section class="reclass certify" id="certify" role="dialog" aria-labelledby="certifyTitle" hidden>
+    <div class="reclass-head">
+      <h2 id="certifyTitle">&gt; CERTIFY SIGNAL</h2>
+      <button class="reclass-skip" id="certifyCancel" type="button" aria-label="Cancel: leave the certifications as they are">CANCEL ✕</button>
+    </div>
+    <p class="reclass-sub" id="certifySub">STAMP THIS SIGNAL FOR WHAT IT TRULY IS. NEW LISTENERS HEAR IT FIRST.</p>
+    <ul class="certify-chips" id="certifyChips" aria-label="Genres this signal is certified for"></ul>
+    <input class="reclass-input" id="certifyInput" type="text" inputmode="search" enterkeyhint="done" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+      placeholder="TYPE A GENRE_" aria-label="Add a genre to certify" role="combobox" aria-expanded="false" aria-controls="certifyList" aria-autocomplete="list">
+    <ul class="reclass-list" id="certifyList" role="listbox" aria-label="Matching genres"></ul>
+    <p class="reclass-none mono" id="certifyNone" hidden>&gt; NO SUCH GENRE ON FILE</p>
+    <button class="certify-save" id="certifySave" type="button">CERTIFY</button>
   </section>
 
   <div class="boot" id="boot">
