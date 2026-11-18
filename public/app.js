@@ -1982,10 +1982,16 @@
     const adding = !state.genres.includes(id);
     state.genres = adding ? [...state.genres, id] : state.genres.filter((g) => g !== id);
     saveGenres();
-    // Adding a genre while nothing is selected (i.e. on Any) tunes to it, so
-    // clearing the list and adding Death Metal plays Death Metal, not anything.
-    if (adding && !state.selected.length) toggleGenreSelection(id);
+    // Adding a genre tunes to it: the first one added in an editor visit
+    // replaces what was selected (add Trap while on Electronic and you hear
+    // Trap), later ones in the same visit join it, up to 5.
+    if (adding) {
+      if (!sheetAdds) state.selected = [];
+      sheetAdds++;
+      if (!state.selected.includes(id)) toggleGenreSelection(id);
+    }
   }
+  let sheetAdds = 0; // genres added since the editor was opened
   function renderMyGenres() {
     const box = $('myGenres');
     box.innerHTML = '';
@@ -2063,6 +2069,7 @@
     }
   }
   function openGenreSheet() {
+    sheetAdds = 0;
     renderMyGenres();
     syncCatalog();
     $('genreSheet').hidden = false;
