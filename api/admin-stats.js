@@ -8,6 +8,7 @@ const { serviceEnv, adminEmails, sbHeaders, verifyUser } = require('../lib/supab
 const { query, sendJson, readJson, bearer } = require('../lib/http');
 const { forget } = require('../lib/reports');
 const { directoryStats } = require('../lib/radio');
+const { GENRES, STYLES } = require('../lib/config');
 
 module.exports = async function handler(req, res) {
   const user = await verifyUser(bearer(req));
@@ -49,11 +50,16 @@ module.exports = async function handler(req, res) {
     signal: AbortSignal.timeout(10000),
   });
   try {
-    const [r, rc, directory, rr] = await Promise.all([
+    const [r, rc, directory, rr, rs, rsr] = await Promise.all([
       rpc('admin_stats', { tz }),
       rpc('admin_check_stats', {}).catch(() => null),
       directoryStats(),
       fetch(`${env.url}/rest/v1/genre_reports?select=id,station_uuid,station_name,genre_key,station_genre,song,city,country_code,status,created_at&order=created_at.desc&limit=150`, {
+        headers: sbHeaders(env.key), signal: AbortSignal.timeout(10000),
+      }).catch(() => null),
+      // The station shelf (lib/pool.js): servable counts per genre, and the scout's latest run.
+      rpc('pool_stats', {}).catch(() => null),
+      fetch(`${env.url}/rest/v1/scout_runs?select=id,started_at,finished_at,discovered,checked,added,now_dead,active_total,notes&order=started_at.desc&limit=1`, {
         headers: sbHeaders(env.key), signal: AbortSignal.timeout(10000),
       }).catch(() => null),
     ]);
@@ -65,7 +71,23 @@ module.exports = async function handler(req, res) {
     const checks = rc && rc.ok ? await rc.json() : null;
     // Wrong-genre reports: missing until their migration has been run.
     const reports = rr && rr.ok ? await rr.json() : null;
-    sendJson(res, 200, { email: user.email, stats: await r.json(), checks, directory, reports });
+    // The shelf: missing (null) until its migration has been run.
+    let shelf = null;
+    if (rs && rs.ok) {
+      const rows = await rs.json();
+      const counts = Object.fromEntries(rows.map((x) => [x.key, x.n]));
+      const runs = rsr && rsr.ok ? await rsr.json() : [];
+      shelf = {
+        total: counts['*'] || 0,
+        sources: { radiobrowser: counts['src:radiobrowser'] || 0, icecast: counts['src:icecast'] || 0 },
+        dead: counts.dead || 0,
+        stale: counts.stale || 0,
+        counts: Object.fromEntries(Object.entries(counts).filter(([k]) => !['*', 'dead', 'stale'].includes(k) && !k.startsWith('src:'))),
+        catalog: Object.fromEntries(Object.entries(GENRES).map(([id, g]) => [id, { label: g.label, styles: STYLES[id] || [] }])),
+        run: runs[0] || null,
+      };
+    }
+    sendJson(res, 200, { email: user.email, stats: await r.json(), checks, directory, reports, shelf });
   } catch (_) {
     sendJson(res, 502, { error: 'Supabase did not answer. Try again.' });
   }

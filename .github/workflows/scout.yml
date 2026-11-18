@@ -1,0 +1,29 @@
+# The station scout: finds and checks stations and keeps the station shelf
+# (Supabase station_pool) stocked, so NEXT doesn't have to vet stations live.
+# See "Station shelf" in README.md. Needs two repository secrets:
+# SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY. Without them the run does nothing.
+name: Station scout
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: scout
+  cancel-in-progress: false
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run the scout
+        run: node scripts/scout.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

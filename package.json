@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node server.js",
     "build": "node scripts/build-meta.js",
-    "test": "node scripts/test.js"
+    "test": "node scripts/test.js && node scripts/test-shelf.js"
   },
   "engines": { "node": ">=18" }
 }

@@ -51,6 +51,10 @@ around the two handlers.
 | `lib/vet.js` | The five station checks and the per-genre cache |
 | `lib/icy.js` | Reads ICY song titles from streams (handles old SHOUTcast servers) |
 | `lib/radio.js` | Radio Browser API client with mirror failover |
+| `lib/pool.js` | Serves a station from the shelf (see "Station shelf") |
+| `lib/shelf.js` | Shelf logic: Icecast directory parsing, stream addresses, genre qualification |
+| `scripts/scout.js` | The scout that stocks and tends the shelf (run by GitHub Actions) |
+| `.github/workflows/scout.yml` | Runs the scout every 30 minutes |
 | `lib/geo.js` | Offline city lookup from `lib/cities.json` (no outside service) |
 | `api/config.js` | Tells the app whether sync is set up (reads Vercel env vars) |
 | `api/keepalive.js` | Daily ping that stops the free Supabase project pausing |
@@ -100,6 +104,55 @@ fine for you and a few friends; for more people, add a custom SMTP sender
 - Streams must be at least 64 kbps (40 kbps for AAC) when they report a bitrate.
   Run `supabase/migrations/20261109070000_low_quality_check.sql` so the dashboard
   can count these rejections.
+
+## Station shelf
+
+Vetting stations live (a search, then a dozen stream checks, all inside one
+request) often runs out of time, especially for narrow genres: that's the
+"No station passed the checks in time" message. The **station shelf** fixes it
+by doing the vetting ahead of time. A background **scout**
+(`scripts/scout.js`) finds stations in Radio Browser and in the Icecast
+directory (dir.xiph.org), checks them again and again over days, and judges each
+one's genres by the songs it has actually been heard playing (not one song),
+plus how local its artists are. The passing stations are kept in Supabase
+(`station_pool`). NEXT picks from the shelf first (one quick "is it still
+playing?" check) and falls back to the old live search only when the shelf has
+nothing for the pick, so nothing changes if the shelf isn't set up.
+
+Set it up once:
+
+1. **Run the migration.** `supabase/migrations/20261118040000_station_pool.sql`
+   (automatic with the GitHub integration, or paste it into the SQL Editor). It
+   creates `station_pool`, `song_lookups`, `scout_runs` and the functions the
+   server uses. The shelf also needs `SUPABASE_SERVICE_ROLE_KEY` in Vercel (already
+   set if the dashboard works).
+2. **Add two GitHub repository secrets** (repo → Settings → Secrets and variables →
+   Actions → New repository secret): `SUPABASE_URL` (the same project address as in
+   Vercel) and `SUPABASE_SERVICE_ROLE_KEY` (the same secret key as in Vercel). If
+   they're missing the scout just prints a message and does nothing.
+3. **Run the scout once by hand:** Actions → **Station scout** → Run workflow. After
+   that it runs by itself every 30 minutes (each run is about 20 minutes).
+4. **Watch it fill up** in the dashboard's **STATION SHELF** panel (stations ready
+   to play per genre, and the last scout run).
+
+Things to know:
+
+- GitHub **pauses scheduled workflows in public repositories after 60 days
+  without repository activity** (any push counts). If the shelf stops growing,
+  open Actions and re-enable the workflow, or run it by hand.
+- A station is served only if the scout verified it in the last 48 hours, so
+  if the scout stops, the shelf empties and live vetting takes over again.
+- Each run searches a different slice of the genres and countries, so the whole
+  catalogue is covered over a day or two. `SCOUT_MINUTES` (default 20) sets how
+  long a run may take; locally: `SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/scout.js`.
+- Song lookups use Apple's free iTunes Search API (about 20 requests a minute
+  allowed; the scout stays at 15 and asks about each song once, remembering
+  answers in `song_lookups`) and artist countries use MusicBrainz (about 1 request a
+  second). So the genre judgements build up over several runs.
+- Icecast stations only come in when their stream also answers on https (browsers
+  block plain http streams on an https page), they aren't Ogg (iPhones can't play
+  it), and their name names one big city (300,000+ people, a name no other big
+  city has), since the directory has no locations.
 
 ## NESE member IDs
 

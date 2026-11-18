@@ -4,6 +4,8 @@
 const { probeStream } = require('../lib/icy');
 const { stationByUuid } = require('../lib/radio');
 const { knownStreamUrl, rememberStream } = require('../lib/vet');
+const { poolLookup } = require('../lib/pool');
+const { isIcecastId } = require('../lib/shelf');
 const { query, sendJson } = require('../lib/http');
 
 module.exports = async function handler(req, res) {
@@ -12,9 +14,15 @@ module.exports = async function handler(req, res) {
   try {
     let url = knownStreamUrl(uuid);
     if (!url) {
-      const s = await stationByUuid(uuid);
-      if (!s || !s.url_resolved) return sendJson(res, 404, { error: 'Station not found.' });
-      url = s.url_resolved;
+      // Icecast-only stations live on the station shelf; for the rest the
+      // shelf is the fallback when Radio Browser doesn't have (or can't say).
+      if (isIcecastId(uuid)) { const row = await poolLookup(uuid); if (row) url = row.url; }
+      let directoryError = null;
+      if (!url) {
+        try { const s = await stationByUuid(uuid); if (s && s.url_resolved) url = s.url_resolved; } catch (e) { directoryError = e; }
+      }
+      if (!url) { const row = await poolLookup(uuid); if (row) url = row.url; }
+      if (!url) { if (directoryError) throw directoryError; return sendJson(res, 404, { error: 'Station not found.' }); }
       rememberStream(uuid, url);
     }
     const p = await probeStream(url);

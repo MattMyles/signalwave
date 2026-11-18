@@ -46,6 +46,7 @@
     $('whoEmail').textContent = j.email;
     render(j.stats);
     renderChecks(j.checks, j.directory);
+    renderShelf(j.shelf);
     renderReports(j.reports);
     show('dash');
   }
@@ -211,6 +212,37 @@
       ${c.checked ? `<div class="reasons">${line('passed')}${rows.length ? '<div class="subhead" style="margin-top:8px">TURNED AWAY BECAUSE</div>' : ''}${rows.map(line).join('')}</div>`
         : '<p class="empty">No stations checked yet. Results appear after the next station search.</p>'}
       <p class="note" style="margin-top:14px">Each station counts once, with its latest result. Only stations Neo Earth Radio has looked at so far are counted, not the whole directory. Slow or offline stations are rechecked after 20 minutes; the rest after 6 hours.</p>`;
+  }
+
+  // The station shelf: stations the scout has vetted and NEXT serves first.
+  // Counts are for servable stations (verified in the last 48 hours).
+  function renderShelf(sh) {
+    const box = $('shelf');
+    if (!sh) {
+      box.innerHTML = '<p class="note">Shelf not set up yet — run <span class="mono" style="overflow-wrap:anywhere">supabase/migrations/20261118040000_station_pool.sql</span> in Supabase, then run the Station scout workflow once.</p>';
+      return;
+    }
+    const n = (k) => (sh.counts && sh.counts[k]) || 0;
+    const mains = Object.entries(sh.catalog || {}).map(([id, g]) => ({ id, label: g.label, styles: g.styles || [], n: n(id) })).sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
+    const max = Math.max(1, ...mains.map((g) => g.n));
+    const run = sh.run;
+    let runFig = '<div class="fig"><span class="k">LAST SCOUT RUN</span><span class="v">—</span><span class="s">No run yet. Run the Station scout workflow in GitHub Actions.</span></div>';
+    if (run) {
+      const when = run.finished_at || run.started_at;
+      const unfinished = !run.finished_at && Date.now() - Date.parse(run.started_at) > 40 * 60000;
+      runFig = `<div class="fig"><span class="k">LAST SCOUT RUN</span><span class="v" style="font-size:20px">${ago(when)}${unfinished ? ' · DID NOT FINISH' : !run.finished_at ? ' · RUNNING' : ''}</span>
+        <span class="s"><b>${fmt(run.discovered)}</b> discovered · <b>${fmt(run.checked)}</b> checked · <b>${fmt(run.added)}</b> added · <b>${fmt(run.now_dead)}</b> now dead</span></div>`;
+    }
+    box.className = 'shelf';
+    box.innerHTML = `<div class="figs">
+        <div class="fig"><span class="k">READY TO PLAY</span><span class="v" style="color:var(--green)">${fmt(sh.total)}</span><span class="s">verified in the last 48 hours${sh.stale ? ` · <b>${fmt(sh.stale)}</b> overdue for a check` : ''}</span></div>
+        <div class="fig"><span class="k">SOURCES</span><span class="v">${fmt(sh.sources.radiobrowser)} <span style="font-size:14px;color:var(--dim)">+</span> ${fmt(sh.sources.icecast)}</span><span class="s">Radio Browser · Icecast directory${sh.dead ? ` · <b>${fmt(sh.dead)}</b> dead on file` : ''}</span></div>
+        ${runFig}
+      </div>
+      <div class="subhead">STATIONS PER GENRE · TAP A GENRE FOR ITS STYLES</div>
+      ${mains.map((g) => `<details><summary><span class="label">${esc(g.label)}</span><span class="n">${fmt(g.n)}</span><span class="meter"><i style="width:${(100 * g.n) / max}%"></i></span></summary>
+        <div class="styles">${g.styles.map((st) => ({ st, c: n(`tag:${st}`) })).sort((a, b) => b.c - a.c).map((x) => `<span class="${x.c ? '' : 'zero'}">${esc(x.st)}<b>${fmt(x.c)}</b></span>`).join('') || '<span>No styles.</span>'}</div></details>`).join('')}
+      <p class="note" style="margin-top:12px">A station counts under every genre it qualifies for, so the genres add up to more than the total. ${run && run.notes ? `<span class="mono">Last run: ${esc(run.notes)}</span>` : ''}</p>`;
   }
 
   function ago(iso) {
