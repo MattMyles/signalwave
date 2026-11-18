@@ -81,7 +81,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '54';
+  const BUILD = '55';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -123,6 +123,9 @@
     showFavDots: store.get('sw.showFavDots', true),
     history: [],
     played: new Set(),
+    manualAt: 0, // when the listener last picked a signal by hand (saved, shared, previous)
+    manualBusy: 0, // manual tunes still in progress
+    searching: false, // next() is waiting on a search
     queue: [],
     back: [], // stations heard before the current one, for the previous button
     inflight: 0,
@@ -250,11 +253,29 @@
   const selKey = () => [...state.selected].sort().join(',');
   // Random play never repeats a station you've heard before (saving one is how
   // you come back to it). Every station heard is remembered on this device and
-  // sent as the exclude list. If a genre runs out of new stations, repeats are
-  // allowed again for that search and the listener is told.
-  async function fetchStation(sel, allowRepeats = false) {
-    const heard = allowRepeats ? [...state.played] : [...state.heard, ...state.played];
-    const exclude = [...new Set([...heard, ...state.hidden, ...state.queue.map((s) => s.uuid)])].slice(-6000);
+  // sent as the exclude list. When a genre selection runs out of new stations,
+  // NEXT falls back to repeats: stations heard before, but never the one
+  // playing, a queued one, a forgotten one, or (when possible) one of the last
+  // two tuned. The selection is remembered as exhausted for a while so the next
+  // presses go straight to repeats instead of searching for new ones again.
+  const EXHAUSTED_MS = 20 * 60 * 1000; // after this, look for new stations again (the scout keeps adding them)
+  state.exhausted = new Map(); // selKey -> when a never-heard search last found nothing (not saved)
+  state.gotFor = new Set(); // selKeys that have already delivered a station this session
+  const isExhausted = (key) => Date.now() - (state.exhausted.get(key) || 0) < EXHAUSTED_MS;
+  // The last two stations tuned before the one playing.
+  function recentUuids() {
+    const cur = state.current && state.current.uuid;
+    return state.history.slice(-3).map((h) => h.uuid).filter((u) => u && u !== cur);
+  }
+  // mode 'fresh': never-heard stations only. 'repeat': heard ones too, minus the
+  // playing, queued, forgotten and last two tuned. 'repeatLoose': as 'repeat'
+  // but the last two tuned are allowed again.
+  async function fetchStation(sel, mode = 'fresh') {
+    const cur = state.current ? [state.current.uuid] : [];
+    const queued = state.queue.map((s) => s.uuid);
+    // Most important last: only the oldest are cut if the list is ever too long.
+    const base = mode === 'fresh' ? [...state.heard, ...state.played] : mode === 'repeat' ? recentUuids() : [];
+    const exclude = [...new Set([...base, ...state.hidden, ...queued, ...cur])].slice(-6000);
     // Countries just heard (and already queued) so the server picks a different part of the world.
     const recent = [...state.history.slice(-3).map((h) => h.cc), ...state.queue.map((s) => s.countryCode)].filter(Boolean);
     const r = await fetch('/api/next', {
@@ -270,16 +291,44 @@
     }
     return j.station;
   }
-  // Tries for a never-heard station first; if none turns up, allows repeats once.
-  async function fetchFresh(sel) {
+  // A station heard before. Throws a 503 if the selection has nothing else to play.
+  // A selection with so few stations that skipping the last two tuned leaves
+  // nothing goes straight to the looser search next time (an empty search costs
+  // the server ~30 s of live checks, so it's only paid once per session).
+  const tinySel = new Set();
+  async function fetchRepeat(sel) {
+    let s;
     try {
-      return await fetchStation(sel);
+      s = await fetchStation(sel, tinySel.has(sel) ? 'repeatLoose' : 'repeat');
     } catch (e) {
-      if (!state.heard.size || e.status !== 503) throw e;
-      const s = await fetchStation(sel, true);
-      if (state.heard.has(s.uuid)) toast('> NO NEW SIGNALS IN THIS GENRE RIGHT NOW. ADD GENRES TO DISCOVER MORE');
+      // Nothing but the last two tuned? Allow them (skip the retry if there were none to allow).
+      if (e.status !== 503 || tinySel.has(sel) || !recentUuids().length) throw e;
+      tinySel.add(sel);
+      s = await fetchStation(sel, 'repeatLoose');
+    }
+    return { ...s, repeat: true }; // client-side tag: a repeat may be queued even if played this session
+  }
+  // One search for the next station of a selection: never-heard first, unless
+  // that was recently found empty; then repeats.
+  async function fetchFresh(sel) {
+    if (!isExhausted(sel)) {
+      try {
+        const s = await fetchStation(sel);
+        state.exhausted.delete(sel);
+        return s;
+      } catch (e) {
+        if (e.status !== 503 || !state.heard.size) throw e; // nothing ever heard: the genre is simply empty
+      }
+      const first = !isExhausted(sel); // another search may have marked it while this one ran
+      state.exhausted.set(sel, Date.now());
+      const s = await fetchRepeat(sel);
+      if (!state.heard.has(s.uuid)) state.exhausted.delete(sel); // a new one after all: not exhausted
+      else if (first) toast('> NO NEW SIGNALS IN THIS GENRE RIGHT NOW. ADD GENRES TO DISCOVER MORE');
       return s;
     }
+    const s = await fetchRepeat(sel);
+    if (!state.heard.has(s.uuid)) state.exhausted.delete(sel);
+    return s;
   }
   function markHeard(uuid) {
     if (!uuid || state.heard.has(uuid)) return;
@@ -296,12 +345,25 @@
       state.inflight++;
       fetchFresh(g)
         .then((s) => {
-          const dup = state.queue.some((q) => q.uuid === s.uuid) || state.played.has(s.uuid);
+          // Repeats (found when nothing new is left) may be queued even though they were played before.
+          const dup = state.queue.some((q) => q.uuid === s.uuid) || (state.current && state.current.uuid === s.uuid) ||
+            (!s.repeat && state.played.has(s.uuid));
           if (g === selKey() && !dup) state.queue.push(s);
         })
         .catch(() => {})
         .finally(() => { state.inflight--; });
     }
+  }
+
+  // The next queued station, skipping any that's now playing or forgotten.
+  function takeQueued() {
+    while (state.queue.length) {
+      const s = state.queue.shift();
+      if (state.current && s.uuid === state.current.uuid) continue;
+      if (state.hidden.includes(s.uuid)) continue;
+      return s;
+    }
+    return null;
   }
 
   async function next(message, isWarning = false) {
@@ -313,36 +375,75 @@
     globeScan(true);
     const g = selKey();
     const startedAt = Date.now();
-    let station = state.queue.shift();
+    state.searching = true; // tuneManual() uses this to know whether to leave the busy state to us
+    let station = takeQueued();
     try {
       if (!station) {
         try {
-          station = await fetchStation(g);
+          station = await fetchFresh(g);
         } catch (e) {
-          if (e.status !== 503 && e.status !== 502) throw e;
+          if (e.status !== 502) throw e;
           status('> STILL SCANNING — WIDENING SEARCH…');
-          station = await fetchFresh(g); // one quiet retry (allowing repeats if nothing new turns up)
+          station = await fetchFresh(g); // one quiet retry after a directory error
         }
       }
     } catch (e) {
+      state.searching = false;
       if (state.eggAt >= startedAt) return; // the hidden track took over; stay quiet
+      if (state.manualAt >= startedAt) return standDownForManual(); // the listener chose a signal; stay quiet
       if (g !== selKey()) return restartForNewGenres(); // genres changed mid-search: search again
-      if (e.status === 503 && state.selected.length === 1) markGenreDead(state.selected[0]);
-      status(`> ${e.message.toUpperCase()}`, true);
+      if (e.status === 503 && state.gotFor.has(g) && state.current) {
+        // This selection has played here already and there is nothing else to switch to: the
+        // station that's playing is the only one. Keep it playing; the genre isn't dead.
+        status('> ONLY SIGNAL ON THIS FREQUENCY // ADD GENRES TO DISCOVER MORE', true);
+        if (state.playedOnce && !state.paused) setLive(true); // setBusy() put the badge on TUNING
+      } else {
+        // Dead only if repeats were searched too and nothing of this selection has ever played.
+        if (e.status === 503 && state.selected.length === 1) markGenreDead(state.selected[0]);
+        status(`> ${e.message.toUpperCase()}`, true);
+      }
       globeScan(false);
       state.switching = false;
       setBusy(false);
       return;
     }
+    state.searching = false;
     // The hidden track was tuned while this search ran: keep the find for later.
     if (state.eggAt >= startedAt) { state.queue.unshift(station); return; }
+    // The listener tuned a saved signal (or stepped back) while this search ran:
+    // their choice wins. Keep the find for later and leave what they chose playing.
+    if (state.manualAt >= startedAt) {
+      if (g === selKey() && !(state.current && state.current.uuid === station.uuid) && !state.queue.some((q) => q.uuid === station.uuid)) state.queue.unshift(station);
+      return standDownForManual();
+    }
     // Genres changed while this search ran: drop the find (it's for the old
     // selection) and search for what's selected now.
     if (g !== selKey()) return restartForNewGenres();
+    state.gotFor.add(g);
     fillQueue();
     await tune(station, { remember: !isWarning }).catch(() => {});
     state.switching = false;
     setBusy(false);
+  }
+  // A search that lost to the listener's own choice ends without touching the
+  // screen; it only gives the busy state back if the manual tune is already done.
+  function standDownForManual() {
+    if (!state.manualBusy) { state.switching = false; setBusy(false); }
+  }
+  // An explicit choice by the listener (a saved or shared signal, PREVIOUS) wins
+  // over a background search, even one still running: it doesn't wait for it,
+  // and next() stands down when it finds that manualAt is newer than its start.
+  async function tuneManual(station, message, opts) {
+    state.manualAt = Date.now();
+    state.manualBusy++;
+    state.switching = true;
+    setBusy(true);
+    if (state.searching) globeScan(false); // end the scan spin the search started
+    status(message);
+    await tune(station, opts).catch(() => {});
+    state.manualBusy--;
+    if (!state.manualBusy && !state.searching) { state.switching = false; setBusy(false); }
+    pollTitle();
   }
   function restartForNewGenres() {
     state.switching = false;
@@ -402,17 +503,11 @@
   // Steps back one station. The station you leave goes to the front of the
   // queue, so NEXT brings you forward to it again.
   async function prev() {
-    if (state.switching || !state.back.length) return;
+    if (!state.back.length) return; // works mid-search too: the search stands down
     const station = state.back.pop();
     if (state.current && !state.current.egg) state.queue.unshift(state.current);
-    state.switching = true;
-    setBusy(true);
     hack(false);
-    status('> RETUNING TO PREVIOUS SIGNAL…');
-    await tune({ ...station, title: null }, { remember: false }).catch(() => {});
-    state.switching = false;
-    setBusy(false);
-    pollTitle();
+    await tuneManual({ ...station, title: null }, '> RETUNING TO PREVIOUS SIGNAL…', { remember: false });
   }
   function setPrevButton() {
     const b = $('prevBtn');
@@ -1615,15 +1710,8 @@
   })();
 
   async function tuneSaved(f, message = '> RETUNING TO SAVED SIGNAL…') {
-    if (state.switching) return;
     start(false);
-    state.switching = true;
-    setBusy(true);
-    status(message);
-    await tune({ ...f, title: f.lastSong || null }).catch(() => {});
-    state.switching = false;
-    setBusy(false);
-    pollTitle();
+    await tuneManual({ ...f, title: f.lastSong || null }, message); // wins over a search in progress
   }
 
   function openDrawer() {
