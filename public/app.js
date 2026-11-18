@@ -81,7 +81,7 @@
     const t = id.slice(4);
     return SPECIAL_LABELS[t] || t.replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
   }
-  const BUILD = '55';
+  const BUILD = '56';
   const MAX_SELECTED = 5; // shown in the Saved panel, to check which version is running
   const POLL_MS = 25000;
   const STALL_MS = 8000;
@@ -275,7 +275,7 @@
     const queued = state.queue.map((s) => s.uuid);
     // Most important last: only the oldest are cut if the list is ever too long.
     const base = mode === 'fresh' ? [...state.heard, ...state.played] : mode === 'repeat' ? recentUuids() : [];
-    const exclude = [...new Set([...base, ...state.hidden, ...queued, ...cur])].slice(-6000);
+    const exclude = [...new Set([...base, ...state.hidden, ...blockedUuids(sel), ...queued, ...cur])].slice(-6000); // blocked for this pick: in every mode, repeats too
     // Countries just heard (and already queued) so the server picks a different part of the world.
     const recent = [...state.history.slice(-3).map((h) => h.cc), ...state.queue.map((s) => s.countryCode)].filter(Boolean);
     const r = await fetch('/api/next', {
@@ -289,6 +289,7 @@
       err.status = r.status;
       throw err;
     }
+    j.station.foundAt = Date.now(); // client-side: when this station's song was last confirmed
     return j.station;
   }
   // A station heard before. Throws a 503 if the selection has nothing else to play.
@@ -330,6 +331,62 @@
     if (!state.heard.has(s.uuid)) state.exhausted.delete(sel);
     return s;
   }
+  // WRONG GENRE? strikes. Many stations mix genres, so one tap doesn't condemn a
+  // station: it adds a strike for each picked genre, for this listener. At
+  // STRIKE_LIMIT strikes for a (station, genre) the station is blocked for that
+  // genre, for this listener only (it can still come up under other genres).
+  // With several genres picked a station is left out only if it's blocked for
+  // every one of them (the rule the server uses for agreed reports). Strikes stay
+  // on this device (sw.genreStrikes); blocks sync with the account (genre_blocks).
+  const STRIKE_LIMIT = 10, STRIKES_MAX = 2000, BLOCKS_MAX = 1000;
+  const plainObject = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? o : {});
+  state.strikes = plainObject(store.get('sw.genreStrikes', {}));
+  state.blocks = {};
+  for (const [k, v] of Object.entries(plainObject(store.get('sw.genreBlocks', {})))) {
+    const list = Array.isArray(v) ? v.filter((u) => typeof u === 'string') : [];
+    if (list.length) state.blocks[k] = list.slice(-BLOCKS_MAX);
+  }
+  const selKeys = (sel) => String(sel || '').split(',').filter(Boolean);
+  // Stations blocked for every genre in this selection (a selKey() string).
+  function blockedUuids(sel) {
+    const lists = selKeys(sel).map((k) => state.blocks[k] || []);
+    if (!lists.length) return [];
+    return lists[0].filter((u) => lists.every((l) => l.includes(u)));
+  }
+  // One strike per picked genre. Returns the genre ids this strike blocked the station for.
+  function addStrikes(uuid, genreIds) {
+    const blocked = [];
+    for (const g of genreIds) {
+      const key = `${uuid}|${g}`;
+      const n = (state.strikes[key] || 0) + 1;
+      delete state.strikes[key]; // re-added last: the oldest entries are dropped first
+      state.strikes[key] = n;
+      if (n >= STRIKE_LIMIT) {
+        const list = state.blocks[g] || [];
+        if (!list.includes(uuid)) { state.blocks[g] = [...list, uuid].slice(-BLOCKS_MAX); blocked.push(g); }
+      }
+    }
+    const keys = Object.keys(state.strikes);
+    if (keys.length > STRIKES_MAX) for (const k of keys.slice(0, keys.length - STRIKES_MAX)) delete state.strikes[k];
+    store.set('sw.genreStrikes', state.strikes);
+    if (blocked.length) store.set('sw.genreBlocks', state.blocks);
+    return blocked;
+  }
+  // Union of the account's blocks and this device's. True when the account lacks something we have.
+  function mergeBlocks(remote) {
+    const r = plainObject(remote);
+    const out = {};
+    let remoteMissing = false;
+    for (const k of new Set([...Object.keys(r), ...Object.keys(state.blocks)])) {
+      const a = Array.isArray(r[k]) ? r[k].filter((u) => typeof u === 'string') : [];
+      const u = [...new Set([...a, ...(state.blocks[k] || [])])].slice(-BLOCKS_MAX);
+      if (u.length) out[k] = u;
+      if (u.some((x) => !a.includes(x))) remoteMissing = true;
+    }
+    state.blocks = out;
+    store.set('sw.genreBlocks', out);
+    return remoteMissing;
+  }
   function markHeard(uuid) {
     if (!uuid || state.heard.has(uuid)) return;
     state.heard.add(uuid);
@@ -360,11 +417,73 @@
     while (state.queue.length) {
       const s = state.queue.shift();
       if (state.current && s.uuid === state.current.uuid) continue;
-      if (state.hidden.includes(s.uuid)) continue;
+      if (state.hidden.includes(s.uuid) || blockedUuids(selKey()).includes(s.uuid)) continue;
       return s;
     }
     return null;
   }
+
+  // A queued station can be minutes old by the time NEXT is pressed, and the
+  // song it was vetted on is long gone (many stations mix genres). So before
+  // tuning an old one, ask the server what it's playing now: /api/nowplaying
+  // with the picked genres says fits true / false / null. Only a clear
+  // mismatch (fits false) or a dead stream (ok false) drops it; a slow answer,
+  // an error or an unknown song never does. Not asked when nothing is selected (Any).
+  const STALE_MS = 45 * 1000;        // older than this: check before tuning
+  const CHECK_TIMEOUT_MS = 3000;
+  const REFRESH_EVERY_MS = 30 * 1000; // background: one queued station per tick
+  const REFRESH_AGE_MS = 40 * 1000;   // ...if it was last confirmed this long ago
+  // 'skip' (clear mismatch or offline), or 'keep' (fits, unknown, slow or any error).
+  async function checkStation(s, sel) {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), CHECK_TIMEOUT_MS);
+    try {
+      const r = await fetch(`/api/nowplaying?uuid=${encodeURIComponent(s.uuid)}&genres=${encodeURIComponent(sel)}`, { signal: ac.signal });
+      if (!r.ok) return 'keep';
+      const j = await r.json();
+      if (j.unknown) return 'keep'; // the server couldn't look the station up: that says nothing about the stream
+      if (j.ok === false || j.fits === false) return 'skip';
+      if (j.title) s.title = j.title; // the HUD should show the song playing now
+      s.foundAt = Date.now();
+      return 'keep';
+    } catch (_) {
+      return 'keep';
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  // The next queued station that still fits the pick, or null (then the caller
+  // fetches one). At most 3 checks; discarded stations aren't marked heard.
+  async function takeVerified(sel) {
+    for (let checks = 0; checks < 3;) {
+      const s = takeQueued();
+      if (!s) return null;
+      if (!sel || Date.now() - (s.foundAt || 0) < STALE_MS) return s;
+      checks++;
+      if (await checkStation(s, sel) !== 'skip') return s;
+    }
+    return null;
+  }
+  // While playing: re-check the stalest queued station now and then, so NEXT
+  // stays instant and misfits are replaced before anyone presses it.
+  state.refreshing = false;
+  async function refreshQueue() {
+    const sel = selKey();
+    if (state.refreshing || document.hidden || !sel || state.switching || !state.current || state.current.egg || !state.playedOnce) return;
+    const s = state.queue.filter((q) => Date.now() - (q.foundAt || 0) >= REFRESH_AGE_MS).sort((a, b) => (a.foundAt || 0) - (b.foundAt || 0))[0];
+    if (!s) return;
+    state.refreshing = true;
+    try {
+      if (await checkStation(s, sel) === 'skip') {
+        const i = state.queue.indexOf(s);
+        if (i >= 0) state.queue.splice(i, 1);
+        fillQueue();
+      }
+    } finally {
+      state.refreshing = false;
+    }
+  }
+  setInterval(refreshQueue, REFRESH_EVERY_MS);
 
   async function next(message, isWarning = false) {
     if (state.switching) return;
@@ -376,8 +495,9 @@
     const g = selKey();
     const startedAt = Date.now();
     state.searching = true; // tuneManual() uses this to know whether to leave the busy state to us
-    let station = takeQueued();
+    let station = null;
     try {
+      station = await takeVerified(g);
       if (!station) {
         try {
           station = await fetchFresh(g);
@@ -2121,8 +2241,9 @@
     markChanged();
     next('> SIGNAL FORGOTTEN — RETUNING…');
   });
-  // Wrong genre: skip now, and report it so the server stops picking this
-  // station for these genres (for everyone). It may still suit other genres.
+  // Wrong genre: skip now, add a strike for each picked genre (10 block the
+  // station for that genre, for this listener) and report it to /admin. One tap
+  // doesn't mean the station is wrong: many mix genres.
   $('flagGenre').addEventListener('click', async () => {
     const s = state.current;
     if (!s || s.egg || !state.selected.length) return;
@@ -2132,7 +2253,13 @@
       song: state.title || null,
       station: { uuid: s.uuid, name: s.name, city: s.city, countryCode: s.countryCode, genre: s.genre },
     };
-    next('> WRONG GENRE REPORTED — RETUNING…');
+    const blocked = addStrikes(s.uuid, state.selected);
+    if (blocked.length) {
+      const label = blocked.map((g) => genreLabel(g).toUpperCase()).join(' + ');
+      markChanged(); // the block syncs with the account
+      toast(`> SIGNAL BLOCKED FOR ${label}`);
+      next(`> SIGNAL BLOCKED FOR ${label} — RETUNING…`);
+    } else next('> WRONG GENRE REPORTED — RETUNING…');
     const headers = { 'Content-Type': 'application/json' };
     try {
       if (sb && user) {
@@ -2163,7 +2290,9 @@
   let pendingEmail = '';
 
   function snapshot() {
-    return { favorites: state.favorites, genres: state.genres, hidden: state.hidden };
+    const snap = { favorites: state.favorites, genres: state.genres, hidden: state.hidden };
+    if (!blocksColMissing) snap.genre_blocks = state.blocks;
+    return snap;
   }
   function markChanged() {
     store.set('sw.changedAt', Date.now());
@@ -2202,7 +2331,9 @@
     if (!sb || !user) return;
     clearTimeout(pushTimer);
     pushTimer = null;
-    const { error } = await sb.from('user_settings').upsert({ user_id: user.id, ...snapshot(), updated_at: new Date().toISOString() });
+    const send = () => sb.from('user_settings').upsert({ user_id: user.id, ...snapshot(), updated_at: new Date().toISOString() });
+    let { error } = await send();
+    if (error && !blocksColMissing && isBlocksColError(error)) { blocksColMissing = true; ({ error } = await send()); }
     if (error) { setSyncState('NOT SAVED — WILL RETRY'); pushTimer = setTimeout(push, 15000); return; }
     store.set('sw.syncedAt', Date.now());
     setSyncState('SYNCED');
@@ -2213,7 +2344,10 @@
   // keep syncing, so a "no such column" error just turns the feature off.
   let lastColMissing = false;
   let lastTimer = null;
-  const isLastColError = (e) => Boolean(e) && (e.code === '42703' || e.code === 'PGRST204' || /last_station/i.test(e.message || ''));
+  const isLastColError = (e) => Boolean(e) && !/genre_blocks/i.test(e.message || '') && (e.code === '42703' || e.code === 'PGRST204' || /last_station/i.test(e.message || ''));
+  // Same for the genre_blocks column (WRONG GENRE? blocks, see its migration).
+  let blocksColMissing = false;
+  const isBlocksColError = (e) => Boolean(e) && /genre_blocks/i.test(e.message || '');
 
   // Sends only the last station (never the other columns, never sw.changedAt/syncedAt).
   function pushLast() {
@@ -2233,10 +2367,14 @@
     if (!sb || !user) return;
     setSyncState('SYNCING…');
     const selectRow = (cols) => sb.from('user_settings').select(cols).eq('user_id', user.id).maybeSingle();
-    let { data, error } = await selectRow(lastColMissing ? 'favorites, genres, hidden, updated_at' : 'favorites, genres, hidden, last_station, updated_at');
-    if (error && !lastColMissing && isLastColError(error)) {
-      lastColMissing = true;
-      ({ data, error } = await selectRow('favorites, genres, hidden, updated_at'));
+    const cols = () => `favorites, genres, hidden, ${lastColMissing ? '' : 'last_station, '}${blocksColMissing ? '' : 'genre_blocks, '}updated_at`;
+    let { data, error } = await selectRow(cols());
+    // A column that hasn't been added yet (migration not run) just turns that feature off.
+    for (let i = 0; i < 2 && error; i++) {
+      if (!blocksColMissing && isBlocksColError(error)) blocksColMissing = true;
+      else if (!lastColMissing && isLastColError(error)) lastColMissing = true;
+      else break;
+      ({ data, error } = await selectRow(cols()));
     }
     if (error) { setSyncState('OFFLINE — WILL RETRY'); return; }
     // The newer of this device's last station and the account's wins.
@@ -2248,6 +2386,8 @@
         updateBootLog();
       } else if (remoteLast.at < state.lastStation.at) pushLast();
     } else if (data && !lastColMissing && state.lastStation) pushLast();
+    // Blocks from both sides are kept; if the account lacks some of ours it's updated below.
+    const blocksToPush = data && !blocksColMissing ? mergeBlocks(data.genre_blocks) : false;
     const firstOnDevice = store.get('sw.syncUser', null) !== user.id;
     const localEdits = store.get('sw.changedAt', 0) > store.get('sw.syncedAt', 0);
     if (!data) {
@@ -2262,6 +2402,7 @@
       applySettings(data);
       store.set('sw.syncedAt', Date.now());
       setSyncState('SYNCED');
+      if (blocksToPush) await push();
     }
     store.set('sw.syncUser', user.id);
   }

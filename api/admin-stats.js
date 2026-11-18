@@ -2,6 +2,12 @@
 // POST /api/admin-stats { action: 'review', ids: [1, 2], status: 'approved' | 'rejected' | 'pending' }
 // — the admin's verdict on WRONG GENRE? reports (approved = agree, the station
 // stops being served for that genre; rejected = dismiss).
+// POST /api/admin-stats { action: 'history', uuid, genres: ['rock', ...] } — the last
+// songs a reported station played (up to 10, newest first) from four sources, each
+// labelled: SERVER (the station's own "recently played" page), LISTENERS (what
+// listeners' checks saw, station_songs), SCOUT (the shelf's samples), REPORT (songs
+// attached to WRONG GENRE? reports), with Apple's genre for each song and whether it
+// fits the genres. Songs come from the song_lookups cache; at most 10 new iTunes lookups.
 // Requires a signed-in user whose email is listed in the ADMIN_EMAILS
 // environment variable. Everyone else gets 403 and no data.
 const { serviceEnv, adminEmails, sbHeaders, verifyUser } = require('../lib/supabase-env');
@@ -9,6 +15,51 @@ const { query, sendJson, readJson, bearer } = require('../lib/http');
 const { forget } = require('../lib/reports');
 const { directoryStats } = require('../lib/radio');
 const { GENRES, STYLES } = require('../lib/config');
+const { makeDb } = require('../lib/sbrest');
+const { makeSongCache } = require('../lib/songcache');
+const songs = require('../lib/songcheck');
+const { serverHistory, mergeHistory } = require('../lib/stationhistory');
+const { storedSongs } = require('../lib/songlog');
+const { poolLookup } = require('../lib/pool');
+const { stationByUuid } = require('../lib/radio');
+const { knownStreamUrl } = require('../lib/vet');
+
+const NEW_LOOKUPS = 10; // iTunes lookups one history may add (the rest come from song_lookups)
+
+// The song history of one station, labelled by where each song came from.
+async function stationHistory(env, uuid, genreKeys) {
+  const db = makeDb(env, { timeoutMs: 6000 });
+  const row = await poolLookup(uuid, { env }).catch(() => null);
+  let url = (row && row.url) || knownStreamUrl(uuid);
+  if (!url) { try { const st = await stationByUuid(uuid); if (st && st.url_resolved) url = st.url_resolved; } catch (_) { /* unknown stream */ } }
+  const [server, listeners, reports] = await Promise.all([
+    url ? serverHistory(url).catch(() => []) : [],
+    storedSongs(uuid, 30, { env }),
+    db.get(`/genre_reports?select=song,created_at&station_uuid=eq.${encodeURIComponent(uuid)}&song=not.is.null&order=created_at.desc&limit=30`).catch(() => []),
+  ]);
+  const scout = (row && Array.isArray(row.samples) ? row.samples : []).map((x) => ({ title: x && x.title, at: x && Date.parse(x.at) || null })).sort((a, b) => (b.at || 0) - (a.at || 0));
+  const merged = mergeHistory([
+    { source: 'SERVER', items: server },
+    { source: 'LISTENERS', items: listeners },
+    { source: 'SCOUT', items: scout },
+    { source: 'REPORT', items: (reports || []).map((x) => ({ title: x.song, at: Date.parse(x.created_at) || null })) },
+  ], 10);
+
+  // Apple's genre for each song (cache first, a few new lookups), and whether it fits the genres.
+  const cache = makeSongCache(makeDb(env, { timeoutMs: 3000 }), Date.now, { timeoutMs: 3000 });
+  const parts = genreKeys.map((key) => ({ key }));
+  const keys = merged.map((m) => { const sp = songs.splitSong(m.title); return sp ? songs.songKey(sp.artist, sp.song) : null; }).filter(Boolean);
+  await cache.prefetch(keys);
+  let left = NEW_LOOKUPS;
+  const gate = async () => left-- > 0;
+  const out = await Promise.all(merged.map(async (m) => {
+    let info = null;
+    try { info = (await songs.songInfo(m.title, { cache, gate })).info; } catch (_) { /* unknown */ }
+    return { ...m, genres: info ? info.genres : [], year: info ? info.year : null, fit: parts.length ? songs.fitOf(parts, info) : null };
+  }));
+  await cache.flush();
+  return { uuid, name: row ? row.name : null, songs: out, server: Boolean(server.length) };
+}
 
 module.exports = async function handler(req, res) {
   const user = await verifyUser(bearer(req));
@@ -22,6 +73,12 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'POST') {
     const body = await readJson(req);
+    if (body && body.action === 'history') {
+      const uuid = String(body.uuid || '').toLowerCase();
+      if (!/^[0-9a-f-]{36}$/.test(uuid)) return sendJson(res, 400, { error: 'Bad station id.' });
+      const genreKeys = (Array.isArray(body.genres) ? body.genres : []).map(String).filter((g) => /^(tag:)?[a-z0-9 &'\-]{2,40}$/.test(g)).slice(0, 5);
+      try { return sendJson(res, 200, await stationHistory(env, uuid, genreKeys)); } catch (_) { return sendJson(res, 502, { error: 'Could not load the history.' }); }
+    }
     const ids = Array.isArray(body && body.ids) ? body.ids.map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200) : [];
     const status = body && body.status;
     if (!body || body.action !== 'review' || !ids.length || !['approved', 'rejected', 'pending'].includes(status)) {

@@ -14,7 +14,7 @@
 //      older rotating keyword searches run instead. New stations go through the
 //      same hard checks as live play, with patient timeouts.
 //   2. RE-CHECK  stations already on the shelf, oldest check first: is the
-//      stream up, what song is on. Each check adds a song sample (last 8 kept).
+//      stream up, what song is on. Each check adds a song sample (last 10 kept).
 //   3. JUDGE     every station's genres from what it actually plays across its
 //      samples (songs looked up once in Apple's catalog, cached in
 //      song_lookups), plus how local its artists are (MusicBrainz).
@@ -36,6 +36,7 @@ const songs = require('../lib/songcheck');
 const { artistCountry } = require('../lib/artistcheck');
 const shelf = require('../lib/shelf');
 const scoutlist = require('../lib/scoutlist');
+const { makeSongCache } = require('../lib/songcache'); // the song_lookups cache, shared with the live paths
 
 const DAY = 86400000;
 const COLUMNS = ['uuid', 'source', 'name', 'url', 'homepage', 'favicon', 'tags', 'country', 'country_code', 'city', 'region', 'lat', 'lng', 'codec', 'bitrate', 'cors',
@@ -102,36 +103,6 @@ function defaults() {
     artistCountry,
     sleep,
     sliceIndex: () => (process.env.SCOUT_SLICE != null && process.env.SCOUT_SLICE !== '' ? Number(process.env.SCOUT_SLICE) : Math.floor(Date.now() / (30 * 60000))),
-  };
-}
-
-// The song cache in Supabase (song_lookups), in front of iTunes.
-function makeSongCache(db, now) {
-  const mem = new Map(); // key -> info | null
-  const fresh = [];
-  return {
-    async prefetch(keys) {
-      const want = [...new Set(keys)].filter((k) => k && !mem.has(k) && !/["\\,()]/.test(k));
-      for (let i = 0; i < want.length; i += 60) {
-        const part = want.slice(i, i + 60);
-        let rows = [];
-        try { rows = await db.get(`/song_lookups?select=key,genre,year,found,looked_at&key=in.(${part.map((k) => `"${encodeURIComponent(k)}"`).join(',')})`); } catch (_) { /* cache only */ }
-        for (const r of rows || []) {
-          if (r.found) mem.set(r.key, { genres: String(r.genre || '').split('|').filter(Boolean), year: r.year || null });
-          else if (now() - Date.parse(r.looked_at) < 30 * DAY) mem.set(r.key, null); // "not found" is rechecked after 30 days
-        }
-      }
-    },
-    get: (key) => (mem.has(key) ? mem.get(key) : undefined),
-    set(key, info) {
-      mem.set(key, info);
-      if (key.length <= 400) fresh.push({ key, genre: info ? info.genres.join('|') : null, year: info ? info.year : null, found: Boolean(info), looked_at: iso(now()) });
-    },
-    async flush() {
-      if (!fresh.length) return;
-      const rows = fresh.splice(0, fresh.length);
-      try { await db.upsert('song_lookups', rows); } catch (_) { /* cache only */ }
-    },
   };
 }
 

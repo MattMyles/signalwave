@@ -2,11 +2,12 @@
 // Body: { visitor, genres: ['rock', 'tag:classic rock'], song, station: { uuid, name, city, countryCode, genre } }
 // Saves one row per picked genre in genre_reports (server-only key), waiting
 // for review in the admin dashboard; once the admin agrees, the server stops
-// serving that station for those genres (lib/reports.js). The admin's own
-// reports count straight away.
+// serving that station for those genres (lib/reports.js). Everyone's reports
+// wait, the admin's included. (In the app a tap is only a strike against the
+// station for that listener; ten strikes block it for them alone.)
 // Like the play log, the listener is only a random per-browser ID (plus their
 // account if signed in).
-const { serviceEnv, sbHeaders, verifyUser, adminEmails } = require('../lib/supabase-env');
+const { serviceEnv, sbHeaders, verifyUser } = require('../lib/supabase-env');
 const { sendJson, readJson, bearer } = require('../lib/http');
 const { forget } = require('../lib/reports');
 const { crossedLine, sendReviewAlert } = require('../lib/notify');
@@ -57,7 +58,6 @@ module.exports = async function handler(req, res) {
   if (recent.size > 5000) recent.clear();
 
   const user = await verifyUser(bearer(req));
-  const isAdmin = Boolean(user && user.email && adminEmails().includes(user.email.toLowerCase()));
   const rows = genres.map((g) => ({
     station_uuid: st.uuid.toLowerCase(),
     station_name: text(st.name, 200),
@@ -68,8 +68,8 @@ module.exports = async function handler(req, res) {
     country_code: text(st.countryCode, 4),
     visitor_id: body.visitor,
     user_id: user ? user.id : null,
-    status: isAdmin ? 'approved' : 'pending',
-    reviewed_at: isAdmin ? new Date().toISOString() : null,
+    status: 'pending',
+    reviewed_at: null,
   }));
   try {
     const r = await fetch(`${env.url}/rest/v1/genre_reports`, {
@@ -80,7 +80,7 @@ module.exports = async function handler(req, res) {
     });
     if (!r.ok) return sendJson(res, 502, { error: 'Could not save the report.' });
     forget(); // this server instance picks the report up straight away
-    if (!isAdmin) await alertIfPilingUp(env, rows.length, req);
+    await alertIfPilingUp(env, rows.length, req);
     res.statusCode = 204;
     res.end();
   } catch (_) {

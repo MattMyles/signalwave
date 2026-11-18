@@ -126,7 +126,8 @@
       <tbody>${rows.map((x) => `<tr${x.status === 'pending' ? '' : ' style="opacity:0.6"'}>
         <td class="mono" style="white-space:nowrap;color:var(--dim)">${ago(x.created_at)}</td>
         <td><a href="/?station=${encodeURIComponent(x.station_uuid)}" target="_blank" rel="noopener" title="Open in the app to listen">${esc(x.station_name || 'Unnamed station')}</a><br>
-          <span style="color:var(--dim)">${flag(x.country_code)} ${esc(x.city || '')}${x.station_genre ? ` · tagged ${esc(x.station_genre)}` : ''}</span></td>
+          <span style="color:var(--dim)">${flag(x.country_code)} ${esc(x.city || '')}${x.station_genre ? ` · tagged ${esc(x.station_genre)}` : ''}</span>
+          <button class="linkbtn" type="button" data-history="${esc(x.station_uuid)}" title="The last songs this station played">SONGS</button></td>
         <td>${esc(genreName(x.genre_key))}</td>
         <td>${esc(x.song || '—')}</td>
         <td style="white-space:nowrap">${x.status === 'pending'
@@ -134,7 +135,7 @@
              <button class="btn" type="button" data-review="rejected" data-id="${x.id}" title="The station does fit: keep it">DISMISS</button>`
           : `<span class="mono" style="color:var(--dim)">${VERDICT[x.status] || x.status}</span>
              <button class="linkbtn" type="button" data-review="pending" data-id="${x.id}">undo</button>`}</td></tr>`).join('')}</tbody></table>
-      <p class="note">AGREE stops that station being picked for that genre (it can still come up in others). DISMISS keeps it. Your own reports from the app count straight away. Tap a station name to listen.</p>
+      <p class="note">AGREE stops that station being picked for that genre for everyone (it can still come up in others). DISMISS keeps it. In the app a tap is only a strike for that listener; ten strikes block the station for them alone. Tap a station name to listen, or SONGS to see what it has been playing.</p>
       ${list.some((x) => x.status === 'approved') ? `<p style="margin-top:10px"><button class="btn" type="button" id="copyReports">COPY AGREED REPORTS FOR CLAUDE</button>
         <span class="note" id="copyMsg">Paste into a chat with Claude to tune the genre rules, so similar stations are caught too.</span></p>` : ''}`
       : '<p class="empty">No reports yet.</p>';
@@ -150,7 +151,55 @@
       ...agreed.map((x) => `- Picked: ${genreName(x.genre_key)} (${x.genre_key}) | Station: ${x.station_name || 'Unnamed'} (${[x.city, x.country_code].filter(Boolean).join(', ')}) | matched tag: ${x.station_genre || '?'} | song: ${x.song || '?'} | uuid: ${x.station_uuid} | ${String(x.created_at).slice(0, 10)}`),
     ].join('\n');
   }
+  // A station's recent songs (up to 10, newest first): where each came from, Apple's
+  // genre for it, and whether it fits the genres it was reported for.
+  const SOURCE_HINT = { SERVER: "the station's own recently-played page", LISTENERS: 'seen by listeners of this app', SCOUT: "the shelf scout's samples", REPORT: 'attached to a WRONG GENRE? report' };
+  const FIT_MARK = { true: ['✓', 'fits', 'var(--green)'], false: ['✗', "doesn't fit", 'var(--red)'], null: ['?', 'unknown', 'var(--dim)'] };
+  function songQuery(title) {
+    return String(title || '').replace(/\[[^\]]*\]/g, ' ').replace(/\s+[-–—]\s+/, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function renderHistory(h) {
+    if (!h.songs.length) return '<p class="empty">NO SONG HISTORY YET</p>';
+    return `<table class="hist-table"><tbody>${h.songs.map((x) => {
+      const q = encodeURIComponent(songQuery(x.title));
+      const [mark, word, color] = FIT_MARK[String(x.fit)];
+      return `<tr><td class="mono" style="white-space:nowrap;color:var(--dim)">${x.at ? ago(new Date(x.at).toISOString()) : '—'}</td>
+        <td>${esc(x.title)}<br>
+          <span class="tag src" style="margin-left:0" title="${esc(SOURCE_HINT[x.source] || '')}">${esc(x.source)}</span>
+          <span style="color:var(--dim)">${x.genres.length ? esc(x.genres.join(', ')) : 'not in Apple’s catalog'}${x.year ? ` · ${x.year}` : ''}</span><br>
+          <a class="songlink" target="_blank" rel="noopener" href="https://open.spotify.com/search/${q}">SPOTIFY</a>
+          <a class="songlink" target="_blank" rel="noopener" href="https://music.apple.com/us/search?term=${q}">APPLE MUSIC</a></td>
+        <td class="mono" style="color:${color};white-space:nowrap;font-size:16px" title="${word}">${mark}</td></tr>`;
+    }).join('')}</tbody></table>`;
+  }
+  async function toggleHistory(btn) {
+    const row = btn.closest('tr');
+    const open = row.nextElementSibling;
+    if (open && open.classList.contains('hist')) { open.remove(); return; }
+    const uuid = btn.dataset.history;
+    const slot = document.createElement('tr');
+    slot.className = 'hist';
+    slot.innerHTML = '<td colspan="5"><p class="note">LOADING SONGS…</p></td>';
+    row.after(slot);
+    const t = await token();
+    if (!t) return show('signin');
+    const genres = [...new Set(lastReports.filter((x) => x.station_uuid === uuid).map((x) => x.genre_key))];
+    try {
+      const r = await fetch('/api/admin-stats', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'history', uuid, genres }),
+      });
+      if (!r.ok) throw new Error();
+      const h = await r.json();
+      slot.firstChild.innerHTML = `${renderHistory(h)}<p class="note">✓ fits the reported genre${genres.length === 1 ? '' : 's'} (${esc(genres.map(genreName).join(', '))}) · ✗ doesn’t · ? unknown (no “Artist - Song” title, or Apple doesn’t have it). Local artists often aren’t in Apple’s catalog.${h.server ? '' : ' The station’s own server gave no history.'}</p>`;
+    } catch (_) {
+      slot.firstChild.innerHTML = '<p class="note">Couldn’t load the song history. Try again.</p>';
+    }
+  }
   $('reports').addEventListener('click', async (e) => {
+    const hb = e.target.closest('[data-history]');
+    if (hb) return toggleHistory(hb);
     if (e.target.closest('#copyReports')) {
       const text = reportsForClaude(lastReports);
       try { await navigator.clipboard.writeText(text); $('copyMsg').textContent = 'Copied. Paste it into a chat with Claude.'; }

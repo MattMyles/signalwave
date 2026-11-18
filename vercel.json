@@ -10,7 +10,7 @@
       "maxDuration": 10
     },
     "api/admin-stats.js": {
-      "maxDuration": 15
+      "maxDuration": 25
     },
     "api/station.js": {
       "maxDuration": 15

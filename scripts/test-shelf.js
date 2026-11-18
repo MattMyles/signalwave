@@ -124,9 +124,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     assert.strictEqual(shelf.localRatio([{}, { cc: null }], 'JP'), null);
     let s = [];
     for (let i = 0; i < 12; i++) s = shelf.addSample(s, { title: `Artist - Song ${i}`, at: String(i), known: false, fits: [] });
-    assert.strictEqual(s.length, 8); assert.strictEqual(s[0].title, 'Artist - Song 4');
+    assert.strictEqual(s.length, 10); assert.strictEqual(s[0].title, 'Artist - Song 2');
     s = shelf.addSample(s, { title: 'Artist - Song 9', at: 'later', known: false, fits: [] });
-    assert.strictEqual(s.length, 8); assert.strictEqual(s.find((x) => x.title === 'Artist - Song 9').at, 'later');
+    assert.strictEqual(s.length, 10); assert.strictEqual(s.find((x) => x.title === 'Artist - Song 9').at, 'later');
   });
 
   console.log('Song lookups with an injected cache');
@@ -255,13 +255,86 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const marks = calls.filter((c) => c.url.includes('pool_mark_fail'));
     assert.strictEqual(marks.length, 1); assert.strictEqual(marks[0].body.p_uuid, 'a0000000-0000-4000-8000-00000000000a');
   });
-  await t('four offline stations in a row: null, all marked', async () => {
+  await t('nine offline stations in a row: null, all nine marked (the rest are never tried)', async () => {
     resetPool();
-    const rows = Array.from({ length: 6 }, (_, i) => row({ uuid: `a0000000-0000-4000-8000-00000000010${i}`, url: `https://dead.test/${i}` }));
+    const rows = Array.from({ length: 12 }, (_, i) => row({ uuid: `a0000000-0000-4000-8000-0000000001${String(i).padStart(2, '0')}`, url: `https://dead.test/${i}` }));
     mockShelf((u) => (u.includes('pool_candidates') ? { json: rows } : { json: null }));
     assert.strictEqual(await poolNext(null, new Set(), [], { probe: async () => ({ ok: false }) }), null);
-    assert.strictEqual(calls.filter((c) => c.url.includes('pool_mark_fail')).length, 4);
+    assert.strictEqual(calls.filter((c) => c.url.includes('pool_mark_fail')).length, 9);
   });
+
+  console.log('Song check before serving');
+  {
+    const spec = resolveGenre(null, 'classic rock');
+    const A = 'a0000000-0000-4000-8000-0000000002', id = (n) => `${A}0${n}`;
+    const rows = ['a', 'b', 'c', 'd'].map((n, i) => row({ uuid: id(i), url: `https://song.test/${n}`, city: 'Osaka' }));
+    const first = async (probe, extra = {}, sp = spec) => {
+      resetPool();
+      mockShelf((u) => (u.includes('pool_candidates') ? { json: rows } : { json: null }));
+      const rand = Math.random; Math.random = () => 0; // weighted order = row order
+      try { return await poolNext(sp, new Set(), [], { probe, ...extra }); } finally { Math.random = rand; }
+    };
+    const seen = [];
+    const titled = (titles) => async (url, o) => { seen.push({ url, o }); return { ok: true, bitrate: 128, title: titles[url.slice(-1)] || null }; };
+    const stub = (answers) => async (title) => (title in answers ? answers[title] : null);
+    const marks = () => calls.filter((c) => c.url.includes('pool_mark_fail'));
+
+    await t('with a genre picked, streams are probed for their song title (no skipMeta)', async () => {
+      seen.length = 0;
+      await first(titled({ a: 'X - One' }), { songFits: stub({}) });
+      assert(seen.length >= 1 && seen.every((x) => x.o.skipMeta !== true && x.o.totalMs === 4000 && x.o.firstByteMs === 2500), JSON.stringify(seen.map((x) => x.o)));
+    });
+    await t('a station playing a clear mismatch is skipped, without being marked offline', async () => {
+      const s = await first(titled({ a: 'Pop - Bad', b: 'Rock - Good' }), { songFits: stub({ 'Pop - Bad': false, 'Rock - Good': true }) });
+      assert.strictEqual(s.uuid, id(1)); assert.strictEqual(s.title, 'Rock - Good');
+      assert.strictEqual(marks().length, 0);
+    });
+    await t('an unknown song (null) passes, and the first in weighted order wins even when later ones also fit', async () => {
+      const s = await first(titled({ a: 'Local Band - Obscure', b: 'Rock - Good' }), { songFits: stub({ 'Rock - Good': true }) });
+      assert.strictEqual(s.uuid, id(0)); assert.strictEqual(s.title, 'Local Band - Obscure');
+    });
+    await t('a station with no song title passes (no judgement possible)', async () => {
+      const s = await first(titled({}), { songFits: stub({}) });
+      assert.strictEqual(s.uuid, id(0)); assert.strictEqual(s.title, 'The Pillows - Funny Bunny'); // falls back to the shelf's latest sample
+    });
+    await t('a mismatch and a dead stream in one batch: the dead one is marked, the next batch supplies the winner', async () => {
+      const probe = async (url) => (url.endsWith('a') ? { ok: false } : { ok: true, title: url.endsWith('d') ? 'Rock - Good' : `Pop - Bad ${url.slice(-1)}` });
+      const s = await first(probe, { songFits: async (t) => t === 'Rock - Good' });
+      assert.strictEqual(s.uuid, id(3));
+      assert.deepStrictEqual(marks().map((c) => c.body.p_uuid), [id(0)]);
+    });
+    await t('every station mismatching gives null (live vetting takes over) and marks nothing', async () => {
+      const s = await first(titled({ a: 'P - 1', b: 'P - 2', c: 'P - 3', d: 'P - 4' }), { songFits: async () => false });
+      assert.strictEqual(s, null); assert.strictEqual(marks().length, 0);
+    });
+    await t('a song check that throws counts as unknown', async () => {
+      const s = await first(titled({ a: 'A - B' }), { songFits: async () => { throw new Error('boom'); } });
+      assert.strictEqual(s.uuid, id(0));
+    });
+    await t('no genre picked: songs are never checked, probing stays quick', async () => {
+      seen.length = 0; let judged = 0;
+      const s = await first(titled({ a: 'Pop - Bad' }), { songFits: async () => { judged++; return false; } }, null);
+      assert.strictEqual(judged, 0); assert.strictEqual(s.uuid, id(0));
+      assert(seen.every((x) => x.o.skipMeta === true));
+    });
+    await t('the real song check runs against the persistent cache (a known song costs no iTunes lookup)', async () => {
+      const real = global.fetch; let itunes = 0;
+      resetPool();
+      mockShelf((u) => {
+        if (u.includes('pool_candidates')) return { json: rows.slice(0, 2) };
+        if (u.includes('/song_lookups?')) return { json: [{ key: 'madonna - holiday', genre: 'pop', year: 1983, found: true, looked_at: '2026-11-01T00:00:00Z' }, { key: 'led zeppelin - kashmir', genre: 'rock', year: 1975, found: true, looked_at: '2026-11-01T00:00:00Z' }] };
+        return { json: null };
+      });
+      const wrapped = global.fetch;
+      global.fetch = async (u, i) => { if (String(u).includes('itunes.apple.com')) { itunes++; throw new Error('offline'); } return wrapped(u, i); };
+      const rand = Math.random; Math.random = () => 0;
+      let s;
+      try { s = await poolNext(spec, new Set(), [], { probe: titled({ a: 'Madonna - Holiday', b: 'Led Zeppelin - Kashmir' }) }); } finally { Math.random = rand; global.fetch = real; }
+      assert.strictEqual(s.uuid, id(1)); assert.strictEqual(itunes, 0);
+      assert.strictEqual(marks().length, 0);
+    });
+  }
+
   await t('picks lean to local-artist stations but others still come up', () => {
     const n = { local: 0, mixed: 0, foreign: 0, unknown: 0 };
     for (let i = 0; i < 4000; i++) {
@@ -375,6 +448,223 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     void Module; void path;
   }
   global.fetch = realFetch;
+
+  console.log('/api/nowplaying with genres');
+  {
+    const http = require('http');
+    const { rememberStream } = require('../lib/vet');
+    const meta = (title) => { const text = `StreamTitle='${title}';`; const n = Math.ceil(text.length / 16); return Buffer.concat([Buffer.from([n]), Buffer.from(text.padEnd(n * 16, '\0'))]); };
+    const srv = http.createServer((req, res) => {
+      const title = decodeURIComponent(req.url.slice(1));
+      res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'icy-metaint': '16' });
+      res.write(Buffer.concat([Buffer.alloc(16, 0xff), title ? meta(title) : Buffer.from([0]), Buffer.alloc(64, 0xff)]));
+    }).listen(0);
+    const base = `http://127.0.0.1:${srv.address().port}`;
+    const real = global.fetch;
+    global.fetch = async (u) => { // Apple's catalog, and a song cache that is down
+      if (String(u).includes('itunes.apple.com')) {
+        const term = new URL(u).searchParams.get('term');
+        const hit = /Holiday/.test(term) ? [{ artistName: 'Madonna', trackName: 'Holiday', primaryGenreName: 'Pop', releaseDate: '1983-09-07T00:00:00Z' }] : [];
+        return { ok: true, status: 200, json: async () => ({ results: hit }) };
+      }
+      return { ok: false, status: 500, json: async () => ({}), text: async () => '' };
+    };
+    const ask = async (n, qs) => {
+      const handler = require('../api/nowplaying');
+      const uuid = `b0000000-0000-4000-8000-00000000030${n}`;
+      const path = ['/Madonna%20-%20Holiday', '/Nobody%20Known%20-%20Nothing', '/'][n];
+      rememberStream(uuid, `${base}${path}`);
+      const res = { headers: {}, setHeader() {}, end(b) { this.body = JSON.parse(b); } };
+      await handler({ url: `/api/nowplaying?uuid=${uuid}${qs}`, method: 'GET', headers: {} }, res);
+      return res.body;
+    };
+    await t('without genres the answer is just { ok, title }', async () => {
+      assert.deepStrictEqual(await ask(0, ''), { ok: true, title: 'Madonna - Holiday' });
+    });
+    await t('with genres it says whether the song fits: false for a clear mismatch, true for a match', async () => {
+      const bad = await ask(0, '&genres=tag:classic%20rock');
+      assert.strictEqual(bad.ok, true); assert.strictEqual(bad.title, 'Madonna - Holiday'); assert.strictEqual(bad.fits, false);
+      assert.strictEqual((await ask(0, '&genres=rock,pop')).fits, true);
+    });
+    await t('with genres, a song Apple does not know or no title gives fits null', async () => {
+      assert.strictEqual((await ask(1, '&genres=rock')).fits, null);
+      const none = await ask(2, '&genres=rock');
+      assert.strictEqual(none.ok, true); assert.strictEqual(none.title, null); assert.strictEqual(none.fits, null);
+    });
+    await t('with genres, a dead stream gives ok false and fits null', async () => {
+      const uuid = 'b0000000-0000-4000-8000-000000000399';
+      rememberStream(uuid, 'http://127.0.0.1:1/none');
+      const handler = require('../api/nowplaying');
+      const res = { headers: {}, setHeader() {}, end(b) { this.body = JSON.parse(b); } };
+      await handler({ url: `/api/nowplaying?uuid=${uuid}&genres=rock`, method: 'GET', headers: {} }, res);
+      assert.strictEqual(res.body.ok, false); assert.strictEqual(res.body.fits, null);
+    });
+    global.fetch = real;
+    srv.close();
+  }
+
+  console.log("A station's own history, and what we record");
+  {
+    const H = require('../lib/stationhistory');
+    const { noteSong, storedSongs, resetSongLog } = require('../lib/songlog');
+    const T = 1700000000;
+    await t('SHOUTcast JSON: titles and times; HTML: titles only; junk: nothing', () => {
+      const j = JSON.stringify([{ playedat: T + 300, title: 'Madonna - Holiday', metadata: {} }, { playedat: String(T + 100), title: 'Queen - Radio Ga Ga' }]);
+      assert.deepStrictEqual(H.parseShoutcastJson(j), [{ title: 'Madonna - Holiday', at: (T + 300) * 1000 }, { title: 'Queen - Radio Ga Ga', at: (T + 100) * 1000 }]);
+      const html = '<table><tr><td><b>Current Song</b></td><td>x</td></tr><tr><td>10:15:02</td><td>Artist &amp; Co - Song &#39;One&#39;</td></tr><tr><td>10:11:40</td><td><a href="/x">Other - Two</a></td></tr></table>';
+      assert.deepStrictEqual(H.parseShoutcastHtml(html), [{ title: "Artist & Co - Song 'One'", at: null }, { title: 'Other - Two', at: null }]);
+      for (const junk of ['', 'not json', '{}', '[]', '<html></html>', 'null', '[1,2,{"a":1}]']) { assert.deepStrictEqual(H.parseShoutcastJson(junk), [], junk); assert.deepStrictEqual(H.parseShoutcastHtml(junk), [], junk); }
+    });
+    await t('AzuraCast: song_history with text or artist and title; the answer may be a list', () => {
+      const entry = { station: { name: 'X' }, now_playing: { song: { text: 'Now - Playing' } }, song_history: [
+        { sh_id: 2, played_at: T + 200, song: { id: 'a', text: 'Band - Tune', artist: 'Band', title: 'Tune' } },
+        { sh_id: 1, played_at: T + 50, song: { artist: 'Solo', title: 'Piece' } }] };
+      const want = [{ title: 'Band - Tune', at: (T + 200) * 1000 }, { title: 'Solo - Piece', at: (T + 50) * 1000 }];
+      assert.deepStrictEqual(H.parseAzuraCast(JSON.stringify(entry)), want);
+      assert.deepStrictEqual(H.parseAzuraCast(JSON.stringify([entry])), want);
+      assert.deepStrictEqual(H.parseAzuraCast(JSON.stringify({ song_history: [] })), []);
+      assert.deepStrictEqual(H.parseAzuraCast('<html>'), []);
+    });
+    await t('Centova Cast: a plain list, a {data} wrapper and nested track objects', () => {
+      assert.deepStrictEqual(H.parseCentova(JSON.stringify([{ title: 'A - B', artist: 'A', song: 'B', date: T }])), [{ title: 'A - B', at: T * 1000 }]);
+      assert.deepStrictEqual(H.parseCentova(JSON.stringify([{ artist: 'A', song: 'B' }])), [{ title: 'A - B', at: null }]);
+      assert.deepStrictEqual(H.parseCentova(JSON.stringify({ type: 'result', data: [{ track: { artist: 'X', title: 'Y' }, date: T }] })), [{ title: 'X - Y', at: T * 1000 }]);
+      assert.deepStrictEqual(H.parseCentova(JSON.stringify({ type: 'error', message: 'nope' })), []);
+    });
+    await t('which pages are tried: https only, by the stream address', () => {
+      assert.deepStrictEqual(H.candidates('http://radio.test/stream'), []);
+      assert.deepStrictEqual(H.candidates('nonsense'), []);
+      const urls = (u) => H.candidates(u).map((c) => c.url);
+      assert.deepStrictEqual(urls('https://radio.test:8443/stream'), ['https://radio.test:8443/played?sid=1&type=json', 'https://radio.test:8443/played.html?sid=1']);
+      assert.strictEqual(urls('https://az.test/listen/my_station/radio.mp3')[0], 'https://az.test/api/nowplaying/my_station');
+      const c = urls('https://cast6.my-control-panel.com/proxy/magiccityradio/stream');
+      assert.deepStrictEqual(c.slice(0, 2), ['https://cast6.my-control-panel.com/recentfeed/magiccityradio/json', 'https://cast6.my-control-panel.com/external/rpc.php?m=recenttracks.get&username=magiccityradio']);
+      assert(!urls('https://x.test/proxy/a%2Fb/stream').some((x) => x.includes('/recentfeed/'))); // odd names are not passed on
+    });
+    await t('the first page in order that yields songs wins; failures and unknown formats give nothing', async () => {
+      const asked = [];
+      const get = async (url) => { asked.push(url); if (url.includes('/recentfeed/')) throw new Error('http-404'); if (url.includes('recenttracks')) return JSON.stringify({ data: [{ track: { artist: 'A', title: 'Old' }, date: T }, { track: { artist: 'B', title: 'New' }, date: T + 60 }] }); return JSON.stringify([{ title: 'Late - Shoutcast', playedat: T }]); };
+      const r = await H.serverHistory('https://cast.test/proxy/user1/stream', { get });
+      assert.deepStrictEqual(r.map((x) => x.title), ['B - New', 'A - Old']); // newest first
+      assert.strictEqual(asked.length, 4);
+      assert.deepStrictEqual(await H.serverHistory('https://cast.test/stream', { get: async () => '<html>nothing</html>' }), []);
+      assert.deepStrictEqual(await H.serverHistory('http://cast.test/stream', { get }), []);
+    });
+    await t('private addresses are refused (no way to reach internal services)', async () => {
+      const prev = process.env.SW_ALLOW_PRIVATE; process.env.SW_ALLOW_PRIVATE = '';
+      try {
+        for (const u of ['https://127.0.0.1/x', 'https://localhost/x', 'https://10.0.0.5:8443/played', 'https://[::1]/x', 'https://169.254.169.254/latest']) {
+          await assert.rejects(H.getText(u), /blocked-private-address|ENOTFOUND|EAI_AGAIN/, u);
+        }
+        assert.deepStrictEqual(await H.serverHistory('https://127.0.0.1:8000/stream'), []);
+        await assert.rejects(H.getText('http://example.com/x'), /https only/);
+      } finally { process.env.SW_ALLOW_PRIVATE = prev; }
+    });
+    await t('history merges by normalized title, newest first, labelled by the first source, at most 10', () => {
+      const m = H.mergeHistory([
+        { source: 'SERVER', items: [{ title: 'Madonna - Holiday', at: 5000 }, { title: 'Untimed - Song', at: null }] },
+        { source: 'LISTENERS', items: [{ title: 'madonna – holiday!', at: 4000 }, { title: 'Queen - Radio Ga Ga', at: 9000 }] },
+        { source: 'SCOUT', items: [{ title: 'Queen - Radio Ga Ga', at: 8000 }, { title: 'Old - Thing', at: 100 }] },
+        { source: 'REPORT', items: [{ title: 'Old - Thing', at: 2000 }, { title: '', at: 1 }, { title: 'Only - Report', at: 3000 }] },
+      ]);
+      assert.deepStrictEqual(m.map((x) => [x.title, x.source]), [['Untimed - Song', 'SERVER'], ['Queen - Radio Ga Ga', 'LISTENERS'], ['Madonna - Holiday', 'SERVER'], ['Only - Report', 'REPORT'], ['Old - Thing', 'SCOUT']]);
+      assert.strictEqual(m.find((x) => x.title === 'Old - Thing').at, 100);
+      const many = H.mergeHistory([{ source: 'SERVER', items: Array.from({ length: 25 }, (_, i) => ({ title: `A - ${i}`, at: i + 1 })) }]);
+      assert.strictEqual(many.length, 10); assert.strictEqual(many[0].title, 'A - 24');
+    });
+
+    const U = 'c0000000-0000-4000-8000-000000000001';
+    await t('station_songs: a new title is stored once; the same title again costs nothing; a title already stored is not repeated', async () => {
+      resetSongLog(); resetPool();
+      mockShelf((u, b) => (u.includes('station_songs?uuid=') ? { json: [{ title: 'Stored - Newest' }] } : { json: null }));
+      assert.strictEqual(await noteSong(U, 'Stored - Newest'), false); // already the newest in the table
+      assert.strictEqual(await noteSong(U, 'Stored - Newest'), false);
+      assert.strictEqual(calls.filter((c) => c.url.includes('/station_songs') && c.body).length, 0);
+      assert.strictEqual(await noteSong(U, 'Brand - New'), true);
+      assert.strictEqual(await noteSong(U, 'Brand - New'), false); // no more database traffic for a repeat
+      const ins = calls.filter((c) => c.url.endsWith('/station_songs'));
+      assert.strictEqual(ins.length, 1); assert.deepStrictEqual(ins[0].body, [{ uuid: U, title: 'Brand - New' }]);
+      assert.strictEqual(calls.filter((c) => c.url.includes('station_songs?uuid=')).length, 1); // one read, for the first sight of the station
+      assert.strictEqual(await noteSong(U, ''), false); assert.strictEqual(await noteSong(U, null), false);
+    });
+    await t('station_songs: no table yet or a failing database stays silent, and is not asked again for a while', async () => {
+      resetSongLog(); resetPool();
+      mockShelf(() => ({ status: 404, json: { code: '42P01', message: 'relation "public.station_songs" does not exist' } }));
+      assert.strictEqual(await noteSong(U, 'A - B'), false);
+      const n = calls.length;
+      assert.strictEqual(await noteSong(U, 'C - D'), false);
+      assert.strictEqual(calls.length, n);
+      resetSongLog();
+      mockShelf(() => ({ status: 500, json: {} }));
+      assert.strictEqual(await noteSong(U, 'A - B'), false);
+      assert.strictEqual(await noteSong(U, 'A - B', { env: null }), false);
+      assert.deepStrictEqual(await storedSongs(U), []);
+      resetSongLog();
+    });
+
+    console.log('Feedback strikes and admin song history');
+    process.env.ADMIN_EMAILS = 'boss@example.com'; process.env.SUPABASE_ANON_KEY = 'anon-test-key';
+    const asUser = (email) => (u, b) => (u.includes('/auth/v1/user') ? { json: { id: 'u-1', email } } : null);
+    const mkRes = () => ({ headers: {}, setHeader() {}, end(b) { this.body = b ? JSON.parse(b) : null; } });
+    await t("everyone's reports wait for review, the admin's included (nothing is approved on the spot)", async () => {
+      for (const email of ['boss@example.com', 'someone@example.com']) {
+        mockShelf((u, b) => asUser(email)(u, b) || { json: null });
+        const handler = require('../api/feedback');
+        const res = mkRes();
+        await handler({ method: 'POST', headers: { authorization: 'Bearer tok-' + email }, body: { visitor: 'd0000000-0000-4000-8000-000000000001', genres: ['rock', 'tag:classic rock'], song: 'A - B', station: { uuid: U, name: 'X', city: 'Y', countryCode: 'JP', genre: 'rock' } } }, res);
+        const post = calls.find((c) => c.url.endsWith('/genre_reports') && c.body);
+        assert(post, email); assert.strictEqual(post.body.length, 2);
+        assert(post.body.every((r) => r.status === 'pending' && r.reviewed_at === null), JSON.stringify(post.body));
+      }
+    });
+    await t('admin history: four sources merged and labelled, Apple genre and fit per song, admin only', async () => {
+      resetPool(); resetSongLog();
+      const row0 = row({ uuid: U, url: 'http://cast.test/stream', samples: [{ title: 'Scout - Sample', at: '2026-11-17T10:00:00Z' }, { title: 'Led Zeppelin - Kashmir', at: '2026-11-17T09:00:00Z' }] });
+      const itunes = [];
+      const real = global.fetch;
+      mockShelf((u, b) => {
+        const a = asUser('boss@example.com')(u, b); if (a) return a;
+        if (u.includes('/station_pool?uuid=')) return { json: [row0] };
+        if (u.includes('/station_songs?uuid=')) return { json: [{ title: 'Listener - Heard', first_seen: '2026-11-18T08:00:00Z' }, { title: 'Dua Lipa - Levitating', first_seen: '2026-11-18T07:00:00Z' }] };
+        if (u.includes('/song_lookups?')) return { json: [{ key: 'led zeppelin - kashmir', genre: 'rock', year: 1975, found: true, looked_at: '2026-11-17T00:00:00Z' }] };
+        return { json: null };
+      });
+      const wrapped = global.fetch;
+      global.fetch = async (u, i) => {
+        if (String(u).includes('itunes.apple.com')) {
+          const term = new URL(u).searchParams.get('term'); itunes.push(term);
+          const hit = /Levitating/.test(term) ? [{ artistName: 'Dua Lipa', trackName: 'Levitating', primaryGenreName: 'Pop', releaseDate: '2020-03-27T00:00:00Z' }] : [];
+          return { ok: true, status: 200, json: async () => ({ results: hit }) };
+        }
+        if (String(u).includes('/genre_reports?select=song')) { const body = [{ song: 'Dua Lipa - Levitating', created_at: '2026-11-18T07:30:00Z' }, { song: 'Reported - Only', created_at: '2026-11-18T06:00:00Z' }]; return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) }; }
+        return wrapped(u, i);
+      };
+      try {
+        const handler = require('../api/admin-stats');
+        const res = mkRes();
+        await handler({ method: 'POST', headers: { authorization: 'Bearer hist-admin' }, body: { action: 'history', uuid: U, genres: ['tag:classic rock'] } }, res);
+        assert.strictEqual(res.statusCode, 200, JSON.stringify(res.body));
+        const by = Object.fromEntries(res.body.songs.map((x) => [x.title, x]));
+        assert.deepStrictEqual(res.body.songs.map((x) => x.title), ['Listener - Heard', 'Dua Lipa - Levitating', 'Reported - Only', 'Scout - Sample', 'Led Zeppelin - Kashmir']);
+        assert.strictEqual(by['Dua Lipa - Levitating'].source, 'LISTENERS'); assert.strictEqual(by['Reported - Only'].source, 'REPORT'); assert.strictEqual(by['Scout - Sample'].source, 'SCOUT');
+        assert.deepStrictEqual([by['Dua Lipa - Levitating'].genres, by['Dua Lipa - Levitating'].fit], [['pop'], false]); // pop is no classic rock
+        assert.deepStrictEqual([by['Led Zeppelin - Kashmir'].genres, by['Led Zeppelin - Kashmir'].fit], [['rock'], true]); // from the cache, 1975
+        assert.strictEqual(by['Listener - Heard'].fit, null); assert.strictEqual(by['Reported - Only'].fit, null); // not in the catalog: unknown
+        assert(!itunes.some((q) => /Kashmir/.test(q)), 'cached songs are not looked up again');
+        assert.strictEqual(res.body.server, false);
+        // not an admin: nothing
+        mockShelf((u, b) => asUser('nobody@example.com')(u, b) || { json: null });
+        const no = mkRes();
+        await handler({ method: 'POST', headers: { authorization: 'Bearer hist-nobody' }, body: { action: 'history', uuid: U, genres: [] } }, no);
+        assert.strictEqual(no.statusCode, 403);
+        const bad = mkRes(); mockShelf((u, b) => asUser('boss@example.com')(u, b) || { json: null });
+        await handler({ method: 'POST', headers: { authorization: 'Bearer hist-admin' }, body: { action: 'history', uuid: '../etc', genres: [] } }, bad);
+        assert.strictEqual(bad.statusCode, 400);
+      } finally { global.fetch = real; }
+    });
+    delete process.env.ADMIN_EMAILS; delete process.env.SUPABASE_ANON_KEY;
+    global.fetch = realFetch;
+  }
 
   console.log('Full station list');
   {
